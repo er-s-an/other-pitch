@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#121410" />
+    <title>Other Pitch</title>
+    <link rel="icon" href="/favicon.svg" />
+  </head>
+  <body>
+    <div class="opener">
+      <div class="pin">
+        <h1>
+          <span class="half half-a">Other</span>
+          <span class="half half-b">Pitch</span>
+        </h1>
+      </div>
+      <main class="play" id="second">
+        <div>
+          <p class="lead" data-rise style="--i: 0">Calder has the ball outside the box.</p>
+          <div class="toolbar" data-rise style="--i: 1">
+            <button class="action" id="play" type="button" data-en="Play the move" data-zh="播放这一脚">Play the move</button>
+            <div class="modes" role="group" aria-label="Caption">
+              <button type="button" data-mode="casual" aria-pressed="true">Casual</button>
+              <button type="button" data-mode="analyst" aria-pressed="false">Analyst</button>
+              <button type="button" data-mode="zh" aria-pressed="false">中文</button>
+            </div>
+            <button class="ghost-button" type="button" data-open-trace data-en="Agent trace" data-zh="代理记录" aria-expanded="false" aria-controls="trace">Agent trace</button>
+          </div>
+          <div class="stage" id="stage" data-rise style="--i: 2">
+            <div class="pitch-wrap">
+              <canvas id="pitch" width="960" height="622" aria-label="Pitch replay"></canvas>
+              <div id="chips"></div>
+            </div>
+            <div class="stage-foot">
+              <p id="clock">HFC 1–1 NVA</p>
+              <p class="legend" id="legend">
+                <span><i class="swatch" data-source="synthetic_tracking"></i>Synthetic tracking</span>
+                <span><i class="swatch" data-source="model_estimate"></i>Model estimate</span>
+              </p>
+            </div>
+            <p class="prompt" id="prompt" hidden>Guess the pass</p>
+            <div class="choices" id="choices" hidden></div>
+            <p class="verdict" id="verdict" hidden aria-live="polite"></p>
+          </div>
+        </div>
+        <aside class="hero-side">
+          <figure class="hero-photo">
+            <img class="drift" src="/media/kadriorg-stadium-floodlights-and-maakri-high-rises.jpg" alt="Floodlights over a stadium stand, with high-rises beyond the roof" width="1920" height="1350" />
+          </figure>
+        </aside>
+      </main>
+    </div>
+
+    <section class="how">
+      <h2 data-rise>The other pitch</h2>
+      <p class="statement" data-rise style="--i: 1">Two trails are not the ball he played.</p>
+      <p class="support" data-rise style="--i: 2">A pass and a shot, drawn beside the tracking. The pitch keeps the one that left his foot.</p>
+      <figure class="frame wide" data-rise style="--i: 3">
+        <img src="/media/outdoor-grass-football-pitch-geograph-org-uk.jpg" alt="An outdoor grass pitch with a goal at the far end" width="1920" height="1440" />
+      </figure>
+    </section>
+
+    <section class="futures">
+      <h2>Three actions</h2>
+      <article data-slot="shot"><h3>Strike it</h3></article>
+      <article data-slot="taken"><h3>Wide to Okonkwo</h3></article>
+      <article data-slot="pass"><h3>Inside to Quinn</h3></article>
+    </section>
+
+    <section class="plate">
+      <figure>
+        <div class="frame">
+          <img src="/media/goal-net-feb-21-2026.jpg" alt="A goal net filling the frame" width="1920" height="1440" />
+        </div>
+        <figcaption>The net belongs to another ground. Harbour City does not.</figcaption>
+      </figure>
+    </section>
+
+    <section class="split">
+      <div class="copy">
+        <h2>Tracking, then a model</h2>
+        <p>The solid trail is the minute as it was generated. The dashed trails are the actions he did not take. The numbers on them are estimates.</p>
+      </div>
+      <div class="frame">
+        <img src="/media/kwu-tung-grass-pitch-201708.jpg" alt="A grass football pitch seen from one corner, with trees along the far side" width="1920" height="1280" />
+      </div>
+    </section>
+
+    <section class="check">
+      <h2>Sent back</h2>
+      <p id="reject-line">QA checks every figure against the cited evidence.</p>
+      <button class="ghost-button" type="button" data-open-trace data-en="Read the trace" data-zh="阅读记录" aria-expanded="false" aria-controls="trace">Read the trace</button>
+      <figure class="frame wide">
+        <img src="/media/grass-football-pitch-forrester-sports-centre-geograph.jpg" alt="A grass pitch beside a low sports building" width="1920" height="1440" />
+      </figure>
+    </section>
+
+    <footer class="close">
+      <div>
+        <button class="replay" id="replay" type="button" data-en="Replay" data-zh="重放">Replay</button>
+        <p id="note">Fictional clubs, players and events. Tracking is synthetic.</p>
+        <ul class="credits">
+          <li><a href="https://commons.wikimedia.org/wiki/File:Kadriorg_Stadium_floodlights_and_Maakri_high-rises.jpg">Kadriorg Stadium floodlights and Maakri high-rises</a> by Sancos, CC BY 4.0.</li>
+          <li><a href="https://commons.wikimedia.org/wiki/File:Outdoor_grass_football_pitch_-_geograph.org.uk_-_3084961.jpg">Outdoor grass football pitch</a> by Ross Watson, CC BY-SA 2.0.</li>
+          <li><a href="https://commons.wikimedia.org/wiki/File:Goal_net_(Feb_21,_2026).jpg">Goal net (Feb 21, 2026)</a> by 茅野ふたば, CC BY-SA 4.0.</li>
+          <li><a href="https://commons.wikimedia.org/wiki/File:Kwu_Tung_Grass_Pitch_201708.jpg">Kwu Tung Grass Pitch 201708</a> by Wpcpey, CC BY 4.0.</li>
+          <li><a href="https://commons.wikimedia.org/wiki/File:Grass_football_pitch,_Forrester_Sports_Centre_-_geograph.org.uk_-_8137439.jpg">Grass football pitch, Forrester Sports Centre</a> by Richard Webb, CC BY-SA 2.0.</li>
+        </ul>
+      </div>
+      <div class="mark-slot">
+        <p class="wordmark">Other Pitch</p>
+      </div>
+    </footer>
+
+    <dialog id="trace" aria-labelledby="trace-title">
+      <div class="trace-head">
+        <h2 id="trace-title">Agent trace</h2>
+        <button class="close-trace" id="close-trace" type="button" data-en="Close" data-zh="关闭">Close</button>
+      </div>
+      <div class="trace-list" id="trace-list"></div>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

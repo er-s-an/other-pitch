@@ -41,6 +41,7 @@ export interface Option {
   label_text: string;
   start: XY;
   end: XY;
+  source?: string;
 }
 
 export interface Ghost {
@@ -72,6 +73,7 @@ export interface Timeline {
     home: { id: string; name: string; short: string; color: string };
     away: { id: string; name: string; short: string; color: string };
     score: { home: number; away: number };
+    note?: string;
   };
   players: Player[];
   phase: { pitch: { length: number; width: number }; decision_t: number };
@@ -85,6 +87,19 @@ export interface Timeline {
   copy: Record<Mode, CopyBlock>;
   legend: Array<{ source: string; label: string }>;
   fictional: boolean;
+}
+
+export interface ModePack {
+  mode: Mode;
+  moment: { caption: string; reveal: string };
+  quiz: {
+    prompt: string;
+    correct_id: string;
+    verdict_right: string;
+    verdict_wrong: string;
+    options: Array<{ id: string; label: string }>;
+  };
+  legend?: Array<{ source: string; label: string }>;
 }
 
 export interface TraceMessage {

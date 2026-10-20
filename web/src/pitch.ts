@@ -20,8 +20,12 @@ export interface Marker {
 }
 
 export function layoutOf(cssWidth: number, cssHeight: number): Layout {
-  const pad = 16;
-  const scale = Math.min((cssWidth - pad * 2) / LENGTH, (cssHeight - pad * 2) / WIDTH);
+  const padX = 28;
+  const padY = 18;
+  const scale = Math.min(
+    Math.max(1, cssWidth - padX * 2) / LENGTH,
+    Math.max(1, cssHeight - padY * 2) / WIDTH,
+  );
   const pw = LENGTH * scale;
   const ph = WIDTH * scale;
   return {
@@ -55,11 +59,12 @@ export function along(ghost: Ghost, progress: number): XY {
 
 function pitchLine(ctx: CanvasRenderingContext2D, layout: Layout, color: string): void {
   const { ox, oy, scale } = layout;
+  const arc = Math.acos(5.5 / 9.15);
   ctx.save();
   ctx.translate(ox, oy);
   ctx.scale(scale, scale);
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2 / scale;
+  ctx.lineWidth = 1.6 / scale;
   ctx.lineJoin = "miter";
   ctx.strokeRect(0, 0, LENGTH, WIDTH);
   ctx.beginPath();
@@ -78,9 +83,29 @@ function pitchLine(ctx: CanvasRenderingContext2D, layout: Layout, color: string)
   ctx.strokeRect(0, sixY, sixW, sixH);
   ctx.strokeRect(LENGTH - sixW, sixY, sixW, sixH);
   ctx.moveTo(11, GOAL_Y);
-  ctx.arc(11, GOAL_Y, 0.4, 0, Math.PI * 2);
+  ctx.arc(11, GOAL_Y, 0.35, 0, Math.PI * 2);
   ctx.moveTo(LENGTH - 11, GOAL_Y);
-  ctx.arc(LENGTH - 11, GOAL_Y, 0.4, 0, Math.PI * 2);
+  ctx.arc(LENGTH - 11, GOAL_Y, 0.35, 0, Math.PI * 2);
+  ctx.moveTo(LENGTH / 2, GOAL_Y);
+  ctx.arc(LENGTH / 2, GOAL_Y, 0.35, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(11, GOAL_Y, 9.15, -arc, arc);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(LENGTH - 11, GOAL_Y, 9.15, Math.PI - arc, Math.PI + arc);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 1, 0, Math.PI / 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(LENGTH, 0, 1, Math.PI / 2, Math.PI);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(LENGTH, WIDTH, 1, Math.PI, Math.PI * 1.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, WIDTH, 1, -Math.PI / 2, 0);
   ctx.stroke();
   ctx.restore();
 }
@@ -88,7 +113,7 @@ function pitchLine(ctx: CanvasRenderingContext2D, layout: Layout, color: string)
 function stripe(ctx: CanvasRenderingContext2D, layout: Layout): void {
   const bands = 10;
   for (let i = 0; i < bands; i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? "#173f2d" : "#1d4c36";
+    ctx.fillStyle = i % 2 === 0 ? "#143828" : "#1b4632";
     const x = layout.ox + (LENGTH * layout.scale * i) / bands;
     const w = (LENGTH * layout.scale) / bands + 0.5;
     ctx.fillRect(x, layout.oy, w, WIDTH * layout.scale);
@@ -104,10 +129,10 @@ function playerDot(
   actor: boolean,
 ): void {
   const { px, py } = toPixel(layout, player.x, player.y);
-  const radius = Math.max(7, layout.scale * 1.15);
+  const radius = Math.max(8, layout.scale * 1.2);
   if (actor) {
     ctx.beginPath();
-    ctx.arc(px, py, radius + 3.5, 0, Math.PI * 2);
+    ctx.arc(px, py, radius + 4, 0, Math.PI * 2);
     ctx.strokeStyle = "#f3f0e7";
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -116,8 +141,11 @@ function playerDot(
   ctx.arc(px, py, radius, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = ink;
+  ctx.stroke();
   ctx.fillStyle = ink;
-  ctx.font = `600 ${Math.max(9, radius)}px "Public Sans", sans-serif`;
+  ctx.font = `600 ${Math.max(10, Math.round(radius))}px "Public Sans", sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(String(player.number), px, py + 0.5);
@@ -125,20 +153,42 @@ function playerDot(
 
 function ball(ctx: CanvasRenderingContext2D, layout: Layout, x: number, y: number): void {
   const { px, py } = toPixel(layout, x, y);
-  const radius = Math.max(4.5, layout.scale * 0.72);
+  const radius = Math.max(5, layout.scale * 0.78);
+  ctx.beginPath();
+  ctx.arc(px, py, radius + 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(18, 20, 16, 0.45)";
+  ctx.fill();
   ctx.beginPath();
   ctx.arc(px, py, radius, 0, Math.PI * 2);
   ctx.fillStyle = "#f3f0e7";
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(px - radius * 0.2, py, radius * 0.72, 0.4, 2.2);
+  ctx.arc(px - radius * 0.15, py, radius * 0.62, 0.5, 2.3);
   ctx.strokeStyle = "#121410";
-  ctx.lineWidth = 1.25;
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 }
 
+function ballTrail(ctx: CanvasRenderingContext2D, layout: Layout, points: XY[]): void {
+  if (points.length < 2) return;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(2.4, layout.scale * 0.28);
+  for (let i = 1; i < points.length; i += 1) {
+    const from = toPixel(layout, points[i - 1].x, points[i - 1].y);
+    const to = toPixel(layout, points[i].x, points[i].y);
+    ctx.beginPath();
+    ctx.moveTo(from.px, from.py);
+    ctx.lineTo(to.px, to.py);
+    const alpha = 0.15 + 0.8 * (i / (points.length - 1));
+    ctx.strokeStyle = `rgba(243, 240, 231, ${alpha.toFixed(3)})`;
+    ctx.stroke();
+  }
+}
+
 function ghostPath(ctx: CanvasRenderingContext2D, layout: Layout, ghost: Ghost, progress: number): void {
-  const count = Math.max(2, Math.ceil(ghost.points.length * Math.min(1, progress)));
+  const count = Math.max(2, Math.ceil(ghost.points.length * Math.min(1, Math.max(0.02, progress))));
+  const ink = ghost.source === "model_estimate" ? "#256f82" : "#f3f0e7";
   ctx.beginPath();
   ghost.points.slice(0, count).forEach((point, index) => {
     const { px, py } = toPixel(layout, point.x, point.y);
@@ -146,16 +196,35 @@ function ghostPath(ctx: CanvasRenderingContext2D, layout: Layout, ghost: Ghost, 
     else ctx.lineTo(px, py);
   });
   ctx.save();
-  ctx.strokeStyle = "rgba(243, 240, 231, 0.92)";
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = ink;
+  ctx.globalAlpha = 0.34;
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.globalAlpha = ghost.source === "model_estimate" ? 0.92 : 0.82;
   ctx.lineWidth = 2.4;
   ctx.setLineDash([8, 7]);
-  ctx.lineDashOffset = -performance.now() / 18;
+  ctx.lineDashOffset = -performance.now() / 28;
   ctx.stroke();
+  ctx.restore();
+}
+
+function goalMouth(ctx: CanvasRenderingContext2D, layout: Layout): void {
+  const depth = 2.4;
+  ctx.save();
+  ctx.translate(layout.ox, layout.oy);
+  ctx.scale(layout.scale, layout.scale);
+  ctx.strokeStyle = "#efe8d6";
+  ctx.lineWidth = 1.8 / layout.scale;
+  ctx.strokeRect(LENGTH, GOAL_Y - GOAL_HALF, depth, GOAL_HALF * 2);
+  ctx.strokeRect(-depth, GOAL_Y - GOAL_HALF, depth, GOAL_HALF * 2);
   ctx.restore();
 }
 
 export function draw(canvas: HTMLCanvasElement, input: {
   frame: Frame;
+  trail: XY[];
   ghosts: Ghost[];
   progress: number;
   markers: Marker[];
@@ -177,20 +246,21 @@ export function draw(canvas: HTMLCanvasElement, input: {
   if (!ctx) return layoutOf(cssWidth, cssHeight);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
-  ctx.fillStyle = "#121410";
+  ctx.fillStyle = "#10140f";
   ctx.fillRect(0, 0, cssWidth, cssHeight);
   const layout = layoutOf(cssWidth, cssHeight);
   stripe(ctx, layout);
-  pitchLine(ctx, layout, "#efe8d6");
+  pitchLine(ctx, layout, "rgba(239, 232, 214, 0.88)");
   goalMouth(ctx, layout);
+  ballTrail(ctx, layout, input.trail);
   if (input.showGhosts) {
     for (const ghost of input.ghosts) ghostPath(ctx, layout, ghost, input.progress);
   }
   for (const marker of input.markers) {
     const { px, py } = toPixel(layout, marker.at.x, marker.at.y);
     ctx.beginPath();
-    ctx.arc(px, py, marker.hot ? 16 : 11, 0, Math.PI * 2);
-    ctx.strokeStyle = marker.hot ? "#256f82" : "#f3f0e7";
+    ctx.arc(px, py, marker.hot ? 16 : 12, 0, Math.PI * 2);
+    ctx.strokeStyle = marker.hot ? "#3ec1c9" : "#f3f0e7";
     ctx.lineWidth = marker.hot ? 3 : 2;
     ctx.stroke();
   }
@@ -209,24 +279,12 @@ export function draw(canvas: HTMLCanvasElement, input: {
   return layout;
 }
 
-function goalMouth(ctx: CanvasRenderingContext2D, layout: Layout): void {
-  const depth = 2.2;
-  ctx.save();
-  ctx.translate(layout.ox, layout.oy);
-  ctx.scale(layout.scale, layout.scale);
-  ctx.strokeStyle = "#efe8d6";
-  ctx.lineWidth = 2 / layout.scale;
-  ctx.strokeRect(LENGTH, GOAL_Y - GOAL_HALF, depth, GOAL_HALF * 2);
-  ctx.strokeRect(-depth, GOAL_Y - GOAL_HALF, depth, GOAL_HALF * 2);
-  ctx.restore();
-}
-
 export function hitMarker(layout: Layout, markers: Marker[], px: number, py: number): string | null {
   let best: { id: string; dist: number } | null = null;
   for (const marker of markers) {
     const at = toPixel(layout, marker.at.x, marker.at.y);
     const dist = Math.hypot(at.px - px, at.py - py);
-    if (dist < 28 && (!best || dist < best.dist)) best = { id: marker.id, dist };
+    if (dist < 32 && (!best || dist < best.dist)) best = { id: marker.id, dist };
   }
   return best ? best.id : null;
 }
