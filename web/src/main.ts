@@ -1,5 +1,5 @@
 import "./style.css";
-import { along, draw, hitMarker, toPixel, type Layout, type Marker } from "./pitch";
+import { along, ease, draw, hitMarker, toPixel, type Layout, type Marker } from "./pitch";
 import type { CopyBlock, Frame, Mode, ModePack, Timeline, TraceFile, TraceMessage, XY } from "./types";
 
 const PLAY_MS = 3400;
@@ -151,19 +151,24 @@ function paint(index: number, progress: number): void {
   chipLayer.replaceChildren();
   if (!showGhosts) return;
   timeline.ghosts.forEach((ghost, index) => {
-    const point = along(ghost, progress);
-    placeChip(point, ghost.label.text, ghost.label.source, index * 26);
+    const point = along(ghost, ease(Math.min(1, Math.max(0.02, progress))));
+    placeChip(point, ghost.label.text, ghost.label.source, index * 26, ghost.kind === "shot" ? "xG" : "EV", true);
   });
-  placeChip(frame.ball, timeline.taken.label_text, timeline.taken.source ?? "model_estimate", -8);
+  placeChip(frame.ball, timeline.taken.label_text, timeline.taken.source ?? "model_estimate", -8, "Played EV", false);
 }
 
-function placeChip(at: XY, text: string, source: string, nudge: number): void {
+function placeChip(at: XY, text: string, source: string, nudge: number, tag: string, ghost: boolean): void {
   if (!chipLayer || !lastLayout) return;
   const pixel = toPixel(lastLayout, at.x, at.y);
   const chip = document.createElement("span");
   chip.className = "chip";
   chip.dataset.source = source;
-  chip.textContent = text;
+  chip.dataset.ghost = String(ghost);
+  const value = document.createElement("b");
+  value.textContent = text;
+  const small = document.createElement("small");
+  small.textContent = tag;
+  chip.append(small, value);
   chip.style.left = `${(pixel.px / lastLayout.cssWidth) * 100}%`;
   chip.style.top = `${(pixel.py / lastLayout.cssHeight) * 100}%`;
   chip.style.transform = `translate(8px, calc(-130% + ${nudge}px))`;

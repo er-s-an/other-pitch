@@ -111,14 +111,35 @@ function pitchLine(ctx: CanvasRenderingContext2D, layout: Layout, color: string)
 }
 
 function stripe(ctx: CanvasRenderingContext2D, layout: Layout): void {
-  const bands = 10;
+  const bands = 14;
+  const pw = LENGTH * layout.scale;
+  const ph = WIDTH * layout.scale;
   for (let i = 0; i < bands; i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? "#143828" : "#1b4632";
-    const x = layout.ox + (LENGTH * layout.scale * i) / bands;
-    const w = (LENGTH * layout.scale) / bands + 0.5;
-    ctx.fillRect(x, layout.oy, w, WIDTH * layout.scale);
+    ctx.fillStyle = i % 2 === 0 ? "#123524" : "#18432e";
+    const x = layout.ox + (pw * i) / bands;
+    ctx.fillRect(x, layout.oy, pw / bands + 0.5, ph);
   }
+  // floodlight pool from the main stand
+  const light = ctx.createRadialGradient(
+    layout.ox + pw * 0.55, layout.oy - ph * 0.15, ph * 0.1,
+    layout.ox + pw * 0.55, layout.oy + ph * 0.4, pw * 0.75,
+  );
+  light.addColorStop(0, "rgba(220, 255, 220, 0.16)");
+  light.addColorStop(0.5, "rgba(160, 220, 170, 0.05)");
+  light.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = light;
+  ctx.fillRect(layout.ox, layout.oy, pw, ph);
 }
+
+function vignette(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.72);
+  g.addColorStop(0, "rgba(0,0,0,0)");
+  g.addColorStop(1, "rgba(3,6,4,0.62)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+export const ease = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
 function playerDot(
   ctx: CanvasRenderingContext2D,
@@ -130,7 +151,17 @@ function playerDot(
 ): void {
   const { px, py } = toPixel(layout, player.x, player.y);
   const radius = Math.max(8, layout.scale * 1.2);
+  ctx.beginPath();
+  ctx.ellipse(px + 1.5, py + radius * 0.75, radius * 0.95, radius * 0.4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+  ctx.fill();
   if (actor) {
+    const pulse = (performance.now() % 1600) / 1600;
+    ctx.beginPath();
+    ctx.arc(px, py, radius + 4 + pulse * 12, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(243, 240, 231, ${(0.7 * (1 - pulse)).toFixed(3)})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
     ctx.beginPath();
     ctx.arc(px, py, radius + 4, 0, Math.PI * 2);
     ctx.strokeStyle = "#f3f0e7";
@@ -187,26 +218,58 @@ function ballTrail(ctx: CanvasRenderingContext2D, layout: Layout, points: XY[]):
 }
 
 function ghostPath(ctx: CanvasRenderingContext2D, layout: Layout, ghost: Ghost, progress: number): void {
-  const count = Math.max(2, Math.ceil(ghost.points.length * Math.min(1, Math.max(0.02, progress))));
-  const ink = ghost.source === "model_estimate" ? "#256f82" : "#f3f0e7";
-  ctx.beginPath();
-  ghost.points.slice(0, count).forEach((point, index) => {
-    const { px, py } = toPixel(layout, point.x, point.y);
-    if (index === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  });
+  const p = ease(Math.min(1, Math.max(0.02, progress)));
+  const ink = ghost.source === "model_estimate" ? "#3ec1c9" : "#f3f0e7";
+  const glow = ghost.source === "model_estimate" ? "rgba(62, 193, 201, 0.55)" : "rgba(243, 240, 231, 0.45)";
+  const pts: { px: number; py: number }[] = [];
+  const steps = 48;
+  for (let i = 0; i <= steps; i += 1) {
+    const at = along(ghost, (i / steps) * p);
+    pts.push(toPixel(layout, at.x, at.y));
+  }
+  const trace = (): void => {
+    ctx.beginPath();
+    pts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.px, pt.py) : ctx.lineTo(pt.px, pt.py)));
+  };
   ctx.save();
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 18;
+  ctx.strokeStyle = glow;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 10;
+  trace();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 0.95;
   ctx.strokeStyle = ink;
-  ctx.globalAlpha = 0.34;
-  ctx.lineWidth = 8;
+  ctx.lineWidth = 2.2;
+  ctx.setLineDash([2, 7]);
+  ctx.lineDashOffset = -performance.now() / 30;
+  trace();
   ctx.stroke();
-  ctx.globalAlpha = ghost.source === "model_estimate" ? 0.92 : 0.82;
-  ctx.lineWidth = 2.4;
-  ctx.setLineDash([8, 7]);
-  ctx.lineDashOffset = -performance.now() / 28;
+  ctx.setLineDash([]);
+  const tip = pts[pts.length - 1];
+  const r = Math.max(4, layout.scale * 0.6);
+  ctx.globalAlpha = 0.9;
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.arc(tip.px, tip.py, r, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(243, 240, 231, 0.35)";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = ink;
   ctx.stroke();
+  if (p >= 0.999) {
+    const ring = (performance.now() % 2000) / 2000;
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.6 * (1 - ring);
+    ctx.beginPath();
+    ctx.arc(tip.px, tip.py, r + 4 + ring * 14, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -246,11 +309,14 @@ export function draw(canvas: HTMLCanvasElement, input: {
   if (!ctx) return layoutOf(cssWidth, cssHeight);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
-  ctx.fillStyle = "#10140f";
+  const bg = ctx.createLinearGradient(0, 0, 0, cssHeight);
+  bg.addColorStop(0, "#0b100c");
+  bg.addColorStop(1, "#070a08");
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, cssWidth, cssHeight);
   const layout = layoutOf(cssWidth, cssHeight);
   stripe(ctx, layout);
-  pitchLine(ctx, layout, "rgba(239, 232, 214, 0.88)");
+  pitchLine(ctx, layout, "rgba(239, 232, 214, 0.78)");
   goalMouth(ctx, layout);
   ballTrail(ctx, layout, input.trail);
   if (input.showGhosts) {
@@ -276,6 +342,7 @@ export function draw(canvas: HTMLCanvasElement, input: {
     );
   }
   ball(ctx, layout, input.frame.ball.x, input.frame.ball.y);
+  vignette(ctx, cssWidth, cssHeight);
   return layout;
 }
 
