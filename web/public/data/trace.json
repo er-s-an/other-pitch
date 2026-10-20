@@ -1,0 +1,230 @@
+{
+  "seed": 7,
+  "framework": "agent_framework",
+  "llm_requested": "deterministic",
+  "llm_notes": [
+    "skipped"
+  ],
+  "qa_rejections": 1,
+  "qa_passed": true,
+  "fictional": true,
+  "messages": [
+    {
+      "sender": "ingest",
+      "receiver": "analyst",
+      "intent": "match_ready",
+      "payload": {
+        "match_id": "synthetic-seed-7",
+        "event_count": 76,
+        "frame_count": 325,
+        "hz": 25,
+        "decision_event_id": "ev_decision"
+      },
+      "evidence_ids": [
+        "ev_decision"
+      ]
+    },
+    {
+      "sender": "analyst",
+      "receiver": "director",
+      "intent": "analysis_ready",
+      "payload": {
+        "actor_id": "h8",
+        "frame_index": 200,
+        "ranking": [
+          "pass_h9",
+          "shot_h8",
+          "pass_h7",
+          "pass_h10"
+        ],
+        "best_id": "pass_h9",
+        "reconfirmed": false,
+        "note": "Shot xG and pass expected value are ready."
+      },
+      "evidence_ids": [
+        "an_pressure",
+        "an_shot",
+        "an_pass_h2",
+        "an_pass_h3",
+        "an_pass_h4",
+        "an_pass_h5",
+        "an_pass_h6",
+        "an_pass_h7",
+        "an_pass_h9",
+        "an_pass_h10",
+        "an_pass_h11",
+        "tr_decision",
+        "ev_decision"
+      ]
+    },
+    {
+      "sender": "director",
+      "receiver": "qa",
+      "intent": "moment_submitted",
+      "payload": {
+        "attempt": 1,
+        "text_source": "draft_decoy",
+        "event_id": "ev_decision",
+        "taken_id": "pass_h3",
+        "alternative_ids": [
+          "pass_h9",
+          "shot_h8"
+        ],
+        "captions": {
+          "casual": "Calder has the ball outside the box. The pass that happens goes wide to Okonkwo. The inside ball to Quinn is not played. Draft figure 0.12.",
+          "analyst": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.00. Draft figure 0.12.",
+          "zh": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.00。传给奎因的另一条路线期望值 0.63，没有被踢出。 草稿数字 0.12。"
+        }
+      },
+      "evidence_ids": [
+        "ev_decision",
+        "tr_decision",
+        "an_pressure",
+        "an_pass_h3",
+        "an_pass_h9",
+        "an_shot"
+      ]
+    },
+    {
+      "sender": "qa",
+      "receiver": "analyst",
+      "intent": "qa_reject",
+      "payload": {
+        "accepted": false,
+        "reasons": [
+          "decimal 0.12 is not in the cited evidence"
+        ],
+        "attempt": 1,
+        "rejected_submission": 1,
+        "ask": "Analyst, reconfirm the evidence. Director, resubmit the moment without numbers that the cited evidence does not contain."
+      },
+      "evidence_ids": [
+        "ev_decision",
+        "tr_decision",
+        "an_pressure",
+        "an_pass_h3",
+        "an_pass_h9",
+        "an_shot"
+      ]
+    },
+    {
+      "sender": "analyst",
+      "receiver": "director",
+      "intent": "analysis_reconfirmed",
+      "payload": {
+        "actor_id": "h8",
+        "frame_index": 200,
+        "ranking": [
+          "pass_h9",
+          "shot_h8",
+          "pass_h7",
+          "pass_h10"
+        ],
+        "best_id": "pass_h9",
+        "reconfirmed": true,
+        "note": "Evidence recomputed from the decision frame. Director must resubmit the words."
+      },
+      "evidence_ids": [
+        "an_pressure",
+        "an_shot",
+        "an_pass_h2",
+        "an_pass_h3",
+        "an_pass_h4",
+        "an_pass_h5",
+        "an_pass_h6",
+        "an_pass_h7",
+        "an_pass_h9",
+        "an_pass_h10",
+        "an_pass_h11",
+        "tr_decision",
+        "ev_decision"
+      ]
+    },
+    {
+      "sender": "director",
+      "receiver": "qa",
+      "intent": "moment_submitted",
+      "payload": {
+        "attempt": 2,
+        "text_source": "template",
+        "event_id": "ev_decision",
+        "taken_id": "pass_h3",
+        "alternative_ids": [
+          "pass_h9",
+          "shot_h8"
+        ],
+        "captions": {
+          "casual": "Calder has the ball outside the box. The pass that happens goes wide to Okonkwo. The inside ball to Quinn is not played.",
+          "analyst": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.00.",
+          "zh": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.00。传给奎因的另一条路线期望值 0.63，没有被踢出。"
+        }
+      },
+      "evidence_ids": [
+        "ev_decision",
+        "tr_decision",
+        "an_pressure",
+        "an_pass_h3",
+        "an_pass_h9",
+        "an_shot"
+      ]
+    },
+    {
+      "sender": "qa",
+      "receiver": "overlay",
+      "intent": "qa_pass",
+      "payload": {
+        "accepted": true,
+        "reasons": [],
+        "rejections_before_pass": 1
+      },
+      "evidence_ids": [
+        "ev_decision",
+        "tr_decision",
+        "an_pressure",
+        "an_pass_h3",
+        "an_pass_h9",
+        "an_shot"
+      ]
+    },
+    {
+      "sender": "overlay",
+      "receiver": "personalize",
+      "intent": "timeline_ready",
+      "payload": {
+        "frame_count": 325,
+        "ghost_ids": [
+          "ghost_pass_h9",
+          "ghost_shot_h8"
+        ],
+        "modes": [
+          "casual",
+          "analyst",
+          "zh"
+        ]
+      },
+      "evidence_ids": [
+        "ev_decision",
+        "tr_decision",
+        "an_pressure",
+        "an_pass_h3",
+        "an_pass_h9",
+        "an_shot"
+      ]
+    },
+    {
+      "sender": "personalize",
+      "receiver": "broadcast",
+      "intent": "modes_ready",
+      "payload": {
+        "modes": [
+          "casual",
+          "analyst",
+          "zh"
+        ]
+      },
+      "evidence_ids": [
+        "ev_decision"
+      ]
+    }
+  ]
+}
