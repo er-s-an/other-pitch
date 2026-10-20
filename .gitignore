@@ -8,3 +8,4 @@ web/dist/
 .taste-skill/
 *.log
 .env
+.vercel
