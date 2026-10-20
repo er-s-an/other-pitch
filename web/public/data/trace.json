@@ -72,8 +72,8 @@
         ],
         "captions": {
           "casual": "Calder has the ball outside the box. The pass that happens goes wide to Okonkwo. The inside ball to Quinn is not played. Draft figure 0.12.",
-          "analyst": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.00. Draft figure 0.12.",
-          "zh": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.00。传给奎因的另一条路线期望值 0.63，没有被踢出。 草稿数字 0.12。"
+          "analyst": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.004. Draft figure 0.12.",
+          "zh": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.004。传给奎因的另一条路线期望值 0.63，没有被踢出。 草稿数字 0.12。"
         }
       },
       "evidence_ids": [
@@ -155,8 +155,8 @@
         ],
         "captions": {
           "casual": "Calder has the ball outside the box. The pass that happens goes wide to Okonkwo. The inside ball to Quinn is not played.",
-          "analyst": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.00.",
-          "zh": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.00。传给奎因的另一条路线期望值 0.63，没有被踢出。"
+          "analyst": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.004.",
+          "zh": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.004。传给奎因的另一条路线期望值 0.63，没有被踢出。"
         }
       },
       "evidence_ids": [

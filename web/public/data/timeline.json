@@ -55273,7 +55273,7 @@
     "expected_value": 0.0035,
     "xg": 0.0065,
     "completion": 0.5409,
-    "label_text": "0.00",
+    "label_text": "0.004",
     "start": {
       "x": 73.187,
       "y": 33.006
@@ -55739,7 +55739,7 @@
           "x": 60.025,
           "y": 7.906
         },
-        "label_text": "0.00",
+        "label_text": "0.004",
         "label_source": "model_estimate"
       },
       {
@@ -55769,25 +55769,25 @@
       }
     },
     "analyst": {
-      "caption": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.00.",
-      "reveal": "Selected action value 0.00. Best untaken pass value 0.63.",
+      "caption": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.004.",
+      "reveal": "Selected action value 0.004. Best untaken pass value 0.63.",
       "quiz_prompt": "Which action did Calder select?",
       "verdict_right": "That action matches the event.",
       "verdict_wrong": "The event is a different action.",
       "options": {
-        "pass_h3": "Pass to Okonkwo, value 0.00",
+        "pass_h3": "Pass to Okonkwo, value 0.004",
         "pass_h9": "Pass to Quinn, value 0.63",
         "shot_h8": "Shot, xG 0.06"
       }
     },
     "zh": {
-      "caption": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.00。传给奎因的另一条路线期望值 0.63，没有被踢出。",
+      "caption": "卡尔德在禁区前拿球，实际把球边路传给了奥孔科，期望值 0.004。传给奎因的另一条路线期望值 0.63，没有被踢出。",
       "reveal": "实线是踢出的传球。另外两条是幽灵轨迹。",
       "quiz_prompt": "猜这脚球",
       "verdict_right": "这就是踢出的传球。",
       "verdict_wrong": "踢出的是另一脚。",
       "options": {
-        "pass_h3": "边路传给奥孔科，期望值 0.00",
+        "pass_h3": "边路传给奥孔科，期望值 0.004",
         "pass_h9": "内切传给奎因，期望值 0.63",
         "shot_h8": "直接射门，预期进球 0.06"
       }

@@ -221,8 +221,8 @@
       "an_pass_h9",
       "an_shot"
     ],
-    "caption": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.00.",
-    "reveal": "Selected action value 0.00. Best untaken pass value 0.63."
+    "caption": "Shot xG 0.06 under pressure 0.03. Pass to Quinn expected value 0.63 (completion 0.87, receipt xG 0.72). The pass played, to Okonkwo, expected value 0.004.",
+    "reveal": "Selected action value 0.004. Best untaken pass value 0.63."
   },
   "decision_frame": 200,
   "decision_t": 8.0,
@@ -54189,7 +54189,7 @@
     "expected_value": 0.0035,
     "xg": 0.0065,
     "completion": 0.5409,
-    "label_text": "0.00",
+    "label_text": "0.004",
     "start": {
       "x": 73.187,
       "y": 33.006
@@ -54659,9 +54659,9 @@
           "x": 60.025,
           "y": 7.906
         },
-        "label_text": "0.00",
+        "label_text": "0.004",
         "label_source": "model_estimate",
-        "label": "Pass to Okonkwo, value 0.00"
+        "label": "Pass to Okonkwo, value 0.004"
       },
       {
         "id": "pass_h9",

@@ -54189,7 +54189,7 @@
     "expected_value": 0.0035,
     "xg": 0.0065,
     "completion": 0.5409,
-    "label_text": "0.00",
+    "label_text": "0.004",
     "start": {
       "x": 73.187,
       "y": 33.006
@@ -54659,7 +54659,7 @@
           "x": 60.025,
           "y": 7.906
         },
-        "label_text": "0.00",
+        "label_text": "0.004",
         "label_source": "model_estimate",
         "label": "Wide to Okonkwo"
       },

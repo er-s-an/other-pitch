@@ -29,8 +29,14 @@ def sigmoid(z: float) -> float:
 
 
 def fmt(value: float) -> str:
-    """Two-decimal text. Narration may only use strings produced here."""
-    return f"{float(value):.2f}"
+    """Two-decimal text; values under 0.01 keep three decimals so they never read as 0.00.
+
+    Narration may only use strings produced here.
+    """
+    v = float(value)
+    if 0 < abs(v) < 0.01:
+        return f"{v:.3f}"
+    return f"{v:.2f}"
 
 
 def goal_angle(x: float, y: float, goal_x: float) -> float:
