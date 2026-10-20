@@ -152,7 +152,7 @@ function paint(index: number, progress: number): void {
   if (!showGhosts) return;
   timeline.ghosts.forEach((ghost, index) => {
     const point = along(ghost, ease(Math.min(1, Math.max(0.02, progress))));
-    placeChip(point, ghost.label.text, ghost.label.source, index * 26, ghost.kind === "shot" ? "xG" : "EV", true);
+    placeChip(point, ghost.label.text, ghost.label.source, index * 40 - 20, ghost.kind === "shot" ? "xG" : "EV", true);
   });
   placeChip(frame.ball, timeline.taken.label_text, timeline.taken.source ?? "model_estimate", -8, "Played EV", false);
 }
@@ -171,7 +171,9 @@ function placeChip(at: XY, text: string, source: string, nudge: number, tag: str
   chip.append(small, value);
   chip.style.left = `${(pixel.px / lastLayout.cssWidth) * 100}%`;
   chip.style.top = `${(pixel.py / lastLayout.cssHeight) * 100}%`;
-  chip.style.transform = `translate(8px, calc(-130% + ${nudge}px))`;
+  const flip = pixel.px > lastLayout.cssWidth * 0.68;
+  const dx = flip ? "calc(-100% - 10px)" : "10px";
+  chip.style.transform = `translate(${dx}, calc(-130% + ${nudge}px))`;
   chipLayer.appendChild(chip);
 }
 
