@@ -1,9 +1,9 @@
 import "./style.css";
-import { along, ease, draw, hitMarker, toPixel, type Layout, type Marker } from "./pitch";
+import { along, draw, easeOutCubic, ghostProgress, hitMarker, toPixel, type Layout, type Marker } from "./pitch";
 import type { CopyBlock, Frame, Mode, ModePack, Timeline, TraceFile, TraceMessage, XY } from "./types";
 
-const PLAY_MS = 3400;
-const REVEAL_MS = 2400;
+const PLAY_MS = 3600;
+const REVEAL_MS = 2800;
 
 const NEUTRAL: Record<Mode, string> = {
   casual: "Calder has the ball outside the box.",
@@ -36,6 +36,7 @@ const traceDialog = document.querySelector<HTMLDialogElement>("#trace");
 const traceList = document.querySelector<HTMLElement>("#trace-list");
 const rejectLine = document.querySelector<HTMLElement>("#reject-line");
 const stage = document.querySelector<HTMLElement>("#stage");
+const facts = document.querySelector<HTMLElement>("#facts");
 const futureNodes = {
   taken: document.querySelector<HTMLElement>('[data-slot="taken"]'),
   pass: document.querySelector<HTMLElement>('[data-slot="pass"]'),
@@ -133,6 +134,7 @@ function paint(index: number, progress: number): void {
   viewProgress = progress;
   const showGhosts = (phase === "reveal" || phase === "done") && progress > 0;
   const frame = frameAt(index);
+  const motion = !reduced && (phase === "reveal" || phase === "done");
   lastLayout = draw(canvas, {
     frame,
     trail: trailUntil(index),
@@ -143,38 +145,61 @@ function paint(index: number, progress: number): void {
     away: timeline.match.away.color,
     actorId: timeline.taken.player_id,
     showGhosts,
+    motion,
   });
   if (clock) {
     const { home, away, score } = timeline.match;
     clock.textContent = `${home.short} ${score.home}–${score.away} ${away.short}  ${clockText(frame.match_t)}`;
   }
-  chipLayer.replaceChildren();
-  if (!showGhosts) return;
-  timeline.ghosts.forEach((ghost, index) => {
-    const point = along(ghost, ease(Math.min(1, Math.max(0.02, progress))));
-    placeChip(point, ghost.label.text, ghost.label.source, index * 40 - 20, ghost.kind === "shot" ? "xG" : "EV", true);
-  });
-  placeChip(frame.ball, timeline.taken.label_text, timeline.taken.source ?? "model_estimate", -8, "Played EV", false);
+  syncChips(frame, progress, showGhosts);
 }
 
-function placeChip(at: XY, text: string, source: string, nudge: number, tag: string, ghost: boolean): void {
-  if (!chipLayer || !lastLayout) return;
-  const pixel = toPixel(lastLayout, at.x, at.y);
-  const chip = document.createElement("span");
-  chip.className = "chip";
-  chip.dataset.source = source;
-  chip.dataset.ghost = String(ghost);
-  const value = document.createElement("b");
-  value.textContent = text;
-  const small = document.createElement("small");
-  small.textContent = tag;
-  chip.append(small, value);
-  chip.style.left = `${(pixel.px / lastLayout.cssWidth) * 100}%`;
-  chip.style.top = `${(pixel.py / lastLayout.cssHeight) * 100}%`;
-  const flip = pixel.px > lastLayout.cssWidth * 0.68;
-  const dx = flip ? "calc(-100% - 10px)" : "10px";
-  chip.style.transform = `translate(${dx}, calc(-130% + ${nudge}px))`;
-  chipLayer.appendChild(chip);
+function syncChips(frame: Frame, progress: number, show: boolean): void {
+  if (!chipLayer || !lastLayout || !timeline) return;
+  if (!show) {
+    chipLayer.replaceChildren();
+    return;
+  }
+  const ghosts = timeline.ghosts;
+  const items: Array<{ at: XY; text: string; source: string; nudge: number; opacity: number }> = ghosts.map((ghost, index) => {
+    const local = ghostProgress(progress, index, ghosts.length);
+    return {
+      at: along(ghost, local),
+      text: ghost.label.text,
+      source: ghost.label.source,
+      nudge: (index - (ghosts.length - 1) / 2) * 32,
+      opacity: local <= 0.02 ? 0 : Math.min(1, 0.25 + local),
+    };
+  });
+  items.push({
+    at: frame.ball,
+    text: timeline.taken.label_text,
+    source: timeline.taken.source ?? "model_estimate",
+    nudge: 28,
+    opacity: 1,
+  });
+  while (chipLayer.childElementCount < items.length) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chipLayer.appendChild(chip);
+  }
+  while (chipLayer.childElementCount > items.length) chipLayer.lastElementChild?.remove();
+  items.forEach((item, index) => {
+    const chip = chipLayer.children[index] as HTMLElement;
+    if (chip.textContent !== item.text) chip.textContent = item.text;
+    if (chip.dataset.source !== item.source) chip.dataset.source = item.source;
+    const pixel = toPixel(lastLayout as Layout, item.at.x, item.at.y);
+    const xRatio = pixel.px / (lastLayout as Layout).cssWidth;
+    const yRatio = pixel.py / (lastLayout as Layout).cssHeight;
+    chip.style.left = `${xRatio * 100}%`;
+    chip.style.top = `${yRatio * 100}%`;
+    const flipX = xRatio > 0.72;
+    const flipY = yRatio < 0.2;
+    const x = flipX ? "calc(-100% - 8px)" : "8px";
+    const y = flipY ? `${8 + item.nudge}px` : `calc(-130% + ${item.nudge}px)`;
+    chip.style.transform = `translate(${x}, ${y})`;
+    chip.style.opacity = String(item.opacity);
+  });
 }
 
 function stop(): void {
@@ -277,7 +302,8 @@ function loop(now: number): void {
   if (!timeline) return;
   if (phase === "play") {
     const u = Math.min(1, (now - startedAt) / PLAY_MS);
-    const index = startIndex() + (timeline.decision_frame - startIndex()) * u;
+    const eased = easeOutCubic(u);
+    const index = startIndex() + (timeline.decision_frame - startIndex()) * eased;
     paint(index, 0);
     if (u >= 1) {
       phase = "guess";
@@ -288,8 +314,9 @@ function loop(now: number): void {
     }
   } else if (phase === "reveal") {
     const u = Math.min(1, (now - startedAt) / REVEAL_MS);
-    const index = timeline.decision_frame + (endIndex() - timeline.decision_frame) * u;
-    paint(index, Math.max(0.04, u));
+    const eased = easeOutCubic(u);
+    const index = timeline.decision_frame + (endIndex() - timeline.decision_frame) * eased;
+    paint(index, Math.max(0.04, eased));
     if (u >= 1) {
       phase = "done";
       paint(endIndex(), 1);
@@ -453,6 +480,7 @@ async function load(): Promise<void> {
   }
   const note = document.querySelector("#note");
   if (note && timeline.match.note) note.textContent = timeline.match.note;
+  if (facts) facts.textContent = timeline.match.venue;
   renderLegend();
   renderChoices();
   renderWords();
@@ -510,6 +538,28 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 bindModes();
+watchReveals();
+
+function watchReveals(): void {
+  const nodes = document.querySelectorAll<HTMLElement>("[data-reveal]");
+  if (reduced || !("IntersectionObserver" in window)) {
+    nodes.forEach((node) => node.classList.add("is-in"));
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add("is-in");
+      io.unobserve(entry.target);
+    }
+  }, { rootMargin: "0px 0px -10% 0px", threshold: 0.12 });
+  nodes.forEach((node) => io.observe(node));
+}
+
+void document.fonts.ready.then(() => {
+  if (phase === "play" || phase === "reveal") return;
+  hold();
+});
 
 void load().catch(() => {
   const lead = document.querySelector(".lead");
