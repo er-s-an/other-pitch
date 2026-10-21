@@ -5,9 +5,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "test:parity": "tsx tests/parity.ts"
   },
   "devDependencies": {
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vite": "^6.0.11"
   }

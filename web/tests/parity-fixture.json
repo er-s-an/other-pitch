@@ -1,0 +1,672 @@
+[
+ {
+  "scene": "central-lane",
+  "variant": "base",
+  "action_id": "pass_wide",
+  "metrics": {
+   "p_complete": 0.6646,
+   "p_lose_possession": 0.3354,
+   "q_shot": 0.0944,
+   "opportunity_value": 0.0627
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.335392,
+    "elapsed_s": 1.86,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a2"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.664608,
+    "elapsed_s": 6.0,
+    "shot_quality": 0.0944,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h3"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 26.57,
+   "lane_block": 0.1908,
+   "receiver_pressure_on_arrival": 0.4545,
+   "blocking_defender_id": "a2",
+   "blocking_defender_distance_m": 4.86,
+   "receipt_pressure": 0.4545,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.0944
+  },
+  "leaf": "completed_shot",
+  "frame_count": 67,
+  "last_ball": [
+   102.53,
+   32.4
+  ],
+  "last_t": 6.6
+ },
+ {
+  "scene": "central-lane",
+  "variant": "base",
+  "action_id": "pass_central",
+  "metrics": {
+   "p_complete": 0.8189,
+   "p_lose_possession": 0.1811,
+   "q_shot": 0.4798,
+   "opportunity_value": 0.3929
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.181094,
+    "elapsed_s": 0.86,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a6"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.818906,
+    "elapsed_s": 2.5,
+    "shot_quality": 0.4798,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h9"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 24.58,
+   "lane_block": 0.0,
+   "receiver_pressure_on_arrival": 0.2712,
+   "blocking_defender_id": "a6",
+   "blocking_defender_distance_m": 7.16,
+   "receipt_pressure": 0.2712,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.4798
+  },
+  "leaf": "completed_shot",
+  "frame_count": 32,
+  "last_ball": [
+   105.0,
+   34.0
+  ],
+  "last_t": 3.1
+ },
+ {
+  "scene": "central-lane",
+  "variant": "base",
+  "action_id": "shoot",
+  "metrics": {
+   "p_complete": null,
+   "p_lose_possession": 0,
+   "q_shot": 0.0497,
+   "opportunity_value": 0.0497
+  },
+  "leaves": [
+   {
+    "leaf_id": "shot",
+    "end_reason": "shot",
+    "probability": 1.0,
+    "elapsed_s": 0.3,
+    "shot_quality": 0.0497,
+    "initial_pass_completed": null,
+    "possession_lost": false,
+    "shooter_id": "h8"
+   }
+  ],
+  "inputs": {
+   "shot_pressure": 0.0039,
+   "shot_distance_m": 34.01
+  },
+  "leaf": "shot",
+  "frame_count": 10,
+  "last_ball": [
+   85.99,
+   33.43
+  ],
+  "last_t": 0.9
+ },
+ {
+  "scene": "central-lane",
+  "variant": "lane_closed",
+  "action_id": "pass_wide",
+  "metrics": {
+   "p_complete": 0.6646,
+   "p_lose_possession": 0.3354,
+   "q_shot": 0.0944,
+   "opportunity_value": 0.0627
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.335392,
+    "elapsed_s": 1.86,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a2"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.664608,
+    "elapsed_s": 6.0,
+    "shot_quality": 0.0944,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h3"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 26.57,
+   "lane_block": 0.1908,
+   "receiver_pressure_on_arrival": 0.4545,
+   "blocking_defender_id": "a2",
+   "blocking_defender_distance_m": 4.86,
+   "receipt_pressure": 0.4545,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.0944
+  },
+  "leaf": "completed_shot",
+  "frame_count": 67,
+  "last_ball": [
+   102.53,
+   32.4
+  ],
+  "last_t": 6.6
+ },
+ {
+  "scene": "central-lane",
+  "variant": "lane_closed",
+  "action_id": "pass_central",
+  "metrics": {
+   "p_complete": 0.2899,
+   "p_lose_possession": 0.7101,
+   "q_shot": 0.4798,
+   "opportunity_value": 0.1391
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.710092,
+    "elapsed_s": 0.99,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a6"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.289908,
+    "elapsed_s": 2.5,
+    "shot_quality": 0.4798,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h9"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 24.58,
+   "lane_block": 0.9431,
+   "receiver_pressure_on_arrival": 0.2712,
+   "blocking_defender_id": "a6",
+   "blocking_defender_distance_m": 0.34,
+   "receipt_pressure": 0.2712,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.4798
+  },
+  "leaf": "intercepted",
+  "frame_count": 14,
+  "last_ball": [
+   76.94,
+   34.16
+  ],
+  "last_t": 1.3
+ },
+ {
+  "scene": "central-lane",
+  "variant": "lane_closed",
+  "action_id": "shoot",
+  "metrics": {
+   "p_complete": null,
+   "p_lose_possession": 0,
+   "q_shot": 0.0497,
+   "opportunity_value": 0.0497
+  },
+  "leaves": [
+   {
+    "leaf_id": "shot",
+    "end_reason": "shot",
+    "probability": 1.0,
+    "elapsed_s": 0.3,
+    "shot_quality": 0.0497,
+    "initial_pass_completed": null,
+    "possession_lost": false,
+    "shooter_id": "h8"
+   }
+  ],
+  "inputs": {
+   "shot_pressure": 0.0039,
+   "shot_distance_m": 34.01
+  },
+  "leaf": "shot",
+  "frame_count": 10,
+  "last_ball": [
+   85.99,
+   33.43
+  ],
+  "last_t": 0.9
+ },
+ {
+  "scene": "open-not-safe",
+  "variant": "base",
+  "action_id": "cross_far",
+  "metrics": {
+   "p_complete": 0.1241,
+   "p_lose_possession": 0.8759,
+   "q_shot": null,
+   "opportunity_value": 0
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.875899,
+    "elapsed_s": 2.38,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a5"
+   },
+   {
+    "leaf_id": "completed_timeout",
+    "end_reason": "timeout",
+    "probability": 0.124101,
+    "elapsed_s": 8.0,
+    "shot_quality": null,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": null
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 43.52,
+   "lane_block": 0.6369,
+   "receiver_pressure_on_arrival": 0.9091,
+   "blocking_defender_id": "a5",
+   "blocking_defender_distance_m": 2.18,
+   "receipt_pressure": 0.9091,
+   "p_shot_given_complete": 0.0,
+   "q_shot_given_complete_and_shot": null
+  },
+  "leaf": "intercepted",
+  "frame_count": 28,
+  "last_ball": [
+   88.8,
+   37.57
+  ],
+  "last_t": 2.7
+ },
+ {
+  "scene": "open-not-safe",
+  "variant": "base",
+  "action_id": "short_support",
+  "metrics": {
+   "p_complete": 0.8161,
+   "p_lose_possession": 0.1839,
+   "q_shot": 0.0948,
+   "opportunity_value": 0.0774
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.183852,
+    "elapsed_s": 1.28,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a6"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.816148,
+    "elapsed_s": 3.2,
+    "shot_quality": 0.0948,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h7"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 14.01,
+   "lane_block": 0.1667,
+   "receiver_pressure_on_arrival": 0.4114,
+   "blocking_defender_id": "a6",
+   "blocking_defender_distance_m": 5.0,
+   "receipt_pressure": 0.3279,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.0948
+  },
+  "leaf": "completed_shot",
+  "frame_count": 39,
+  "last_ball": [
+   102.62,
+   32.88
+  ],
+  "last_t": 3.8
+ },
+ {
+  "scene": "open-not-safe",
+  "variant": "base",
+  "action_id": "shoot",
+  "metrics": {
+   "p_complete": null,
+   "p_lose_possession": 0,
+   "q_shot": 0.0375,
+   "opportunity_value": 0.0375
+  },
+  "leaves": [
+   {
+    "leaf_id": "shot",
+    "end_reason": "shot",
+    "probability": 1.0,
+    "elapsed_s": 0.3,
+    "shot_quality": 0.0375,
+    "initial_pass_completed": null,
+    "possession_lost": false,
+    "shooter_id": "h11"
+   }
+  ],
+  "inputs": {
+   "shot_pressure": 0.0,
+   "shot_distance_m": 34.21
+  },
+  "leaf": "shot",
+  "frame_count": 10,
+  "last_ball": [
+   93.28,
+   18.49
+  ],
+  "last_t": 0.9
+ },
+ {
+  "scene": "close-call",
+  "variant": "base",
+  "action_id": "shoot",
+  "metrics": {
+   "p_complete": null,
+   "p_lose_possession": 0,
+   "q_shot": 0.1557,
+   "opportunity_value": 0.1557
+  },
+  "leaves": [
+   {
+    "leaf_id": "shot",
+    "end_reason": "shot",
+    "probability": 1.0,
+    "elapsed_s": 0.3,
+    "shot_quality": 0.1557,
+    "initial_pass_completed": null,
+    "possession_lost": false,
+    "shooter_id": "h7"
+   }
+  ],
+  "inputs": {
+   "shot_pressure": 0.3468,
+   "shot_distance_m": 20.25
+  },
+  "leaf": "shot",
+  "frame_count": 10,
+  "last_ball": [
+   100.06,
+   32.12
+  ],
+  "last_t": 0.9
+ },
+ {
+  "scene": "close-call",
+  "variant": "base",
+  "action_id": "lay_off",
+  "metrics": {
+   "p_complete": 0.6444,
+   "p_lose_possession": 0.3556,
+   "q_shot": 0.1966,
+   "opportunity_value": 0.1267
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.355565,
+    "elapsed_s": 0.7,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a6"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.644435,
+    "elapsed_s": 1.7,
+    "shot_quality": 0.1966,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h9"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 12.78,
+   "lane_block": 0.5667,
+   "receiver_pressure_on_arrival": 0.3659,
+   "blocking_defender_id": "a6",
+   "blocking_defender_distance_m": 2.6,
+   "receipt_pressure": 0.2949,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.1966
+  },
+  "leaf": "completed_shot",
+  "frame_count": 24,
+  "last_ball": [
+   105.0,
+   34.0
+  ],
+  "last_t": 2.3
+ },
+ {
+  "scene": "close-call",
+  "variant": "base",
+  "action_id": "recycle",
+  "metrics": {
+   "p_complete": 0.7324,
+   "p_lose_possession": 0.2676,
+   "q_shot": 0.1144,
+   "opportunity_value": 0.0838
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.267625,
+    "elapsed_s": 0.7,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a6"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.732375,
+    "elapsed_s": 4.2,
+    "shot_quality": 0.1144,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h6"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 12.63,
+   "lane_block": 0.5667,
+   "receiver_pressure_on_arrival": 0.0428,
+   "blocking_defender_id": "a6",
+   "blocking_defender_distance_m": 2.6,
+   "receipt_pressure": 0.0245,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.1144
+  },
+  "leaf": "completed_shot",
+  "frame_count": 49,
+  "last_ball": [
+   102.42,
+   33.89
+  ],
+  "last_t": 4.8
+ },
+ {
+  "scene": "heldout-01",
+  "variant": "base",
+  "action_id": "pass_inside",
+  "metrics": {
+   "p_complete": 0.433,
+   "p_lose_possession": 0.567,
+   "q_shot": 0.269,
+   "opportunity_value": 0.1165
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.566988,
+    "elapsed_s": 1.41,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a5"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.433012,
+    "elapsed_s": 2.4,
+    "shot_quality": 0.269,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h9"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 23.74,
+   "lane_block": 0.517,
+   "receiver_pressure_on_arrival": 0.6765,
+   "blocking_defender_id": "a5",
+   "blocking_defender_distance_m": 2.9,
+   "receipt_pressure": 0.564,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.269
+  },
+  "leaf": "intercepted",
+  "frame_count": 19,
+  "last_ball": [
+   84.57,
+   44.75
+  ],
+  "last_t": 1.8
+ },
+ {
+  "scene": "heldout-01",
+  "variant": "base",
+  "action_id": "pass_short",
+  "metrics": {
+   "p_complete": 0.5266,
+   "p_lose_possession": 0.4734,
+   "q_shot": 0.1101,
+   "opportunity_value": 0.058
+  },
+  "leaves": [
+   {
+    "leaf_id": "intercepted",
+    "end_reason": "turnover",
+    "probability": 0.473415,
+    "elapsed_s": 1.19,
+    "shot_quality": null,
+    "initial_pass_completed": false,
+    "possession_lost": true,
+    "interceptor_id": "a6"
+   },
+   {
+    "leaf_id": "completed_shot",
+    "end_reason": "shot",
+    "probability": 0.526585,
+    "elapsed_s": 3.2,
+    "shot_quality": 0.1101,
+    "initial_pass_completed": true,
+    "possession_lost": false,
+    "shooter_id": "h7"
+   }
+  ],
+  "inputs": {
+   "pass_distance_m": 15.01,
+   "lane_block": 0.6646,
+   "receiver_pressure_on_arrival": 0.4589,
+   "blocking_defender_id": "a6",
+   "blocking_defender_distance_m": 2.01,
+   "receipt_pressure": 0.4589,
+   "p_shot_given_complete": 1.0,
+   "q_shot_given_complete_and_shot": 0.1101
+  },
+  "leaf": "completed_shot",
+  "frame_count": 39,
+  "last_ball": [
+   102.27,
+   34.61
+  ],
+  "last_t": 3.8
+ },
+ {
+  "scene": "heldout-01",
+  "variant": "base",
+  "action_id": "shoot",
+  "metrics": {
+   "p_complete": null,
+   "p_lose_possession": 0,
+   "q_shot": 0.0318,
+   "opportunity_value": 0.0318
+  },
+  "leaves": [
+   {
+    "leaf_id": "shot",
+    "end_reason": "shot",
+    "probability": 1.0,
+    "elapsed_s": 0.3,
+    "shot_quality": 0.0318,
+    "initial_pass_completed": null,
+    "possession_lost": false,
+    "shooter_id": "h10"
+   }
+  ],
+  "inputs": {
+   "shot_pressure": 0.0858,
+   "shot_distance_m": 35.81
+  },
+  "leaf": "shot",
+  "frame_count": 10,
+  "last_ball": [
+   88.18,
+   46.44
+  ],
+  "last_t": 0.9
+ }
+]
