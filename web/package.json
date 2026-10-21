@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "test:parity": "tsx tests/parity.ts"
+    "test:parity": "tsx tests/parity.ts",
+    "test:qa": "tsx tests/qa.ts",
+    "test": "tsx tests/parity.ts && tsx tests/qa.ts"
   },
   "devDependencies": {
     "tsx": "^4.23.15",
