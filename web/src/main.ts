@@ -1,5 +1,6 @@
 import "./style.css";
 import { OTHER, YOU, draw, framesAt, hitTarget, type Route, type Highlight } from "./pitch";
+import { initSandbox, loadScene as sbLoad, decodeState, showSandbox, hasState, randomize, sbRecompute, sandboxState } from "./sandbox";
 import type { Branch, Bundle, Catalog, Explanation, Frame, Mode, Motion, Trace, XY } from "./types";
 
 const DATA = "/data/v2";
@@ -249,6 +250,7 @@ function renderPanel() {
     const row = el("div", "row");
     row.innerHTML = `<button class="btn ghost" type="button" data-act="replay">Replay</button>
       <button class="btn ghost" type="button" data-act="share">Challenge a friend</button>
+      <button class="btn ghost" type="button" data-act="edit">Edit this play</button>
       <button class="btn primary" type="button" data-act="next">${state.challenge ? "Play the full challenge" : state.round + 1 < ROUNDS.length ? "Next play" : "See your recap"}</button>`;
     card.append(row);
     panel.append(card);
@@ -275,7 +277,7 @@ function renderRecap(panel: HTMLElement) {
   c.append(ol);
   const lean = state.rounds.filter((r) => r.pick.startsWith("shoot")).length;
   c.append(el("p", "fine", `In these three plays you shot ${lean} time${lean === 1 ? "" : "s"}. Three plays only show this session's tendency, not your skill.`));
-  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Copy challenge link</button><button class="btn primary" type="button" data-act="restart">Play again</button>`));
+  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Copy challenge link</button><button class="btn ghost" type="button" data-act="restart">Play again</button><button class="btn primary" type="button" data-app="sandbox">Open the Sandbox</button>`));
   panel.append(c);
 }
 
@@ -422,6 +424,8 @@ async function loadHeldout() {
 document.addEventListener("click", (ev) => {
   const t = (ev.target as HTMLElement).closest("button") as HTMLButtonElement | null;
   if (!t) return;
+  if (t.dataset.app) { if (t.dataset.app === "sandbox" && !hasState()) sbLoad("central-lane"); setApp(t.dataset.app as "tutorial" | "sandbox"); return; }
+  if (t.dataset.sel || t.dataset.tool || t.dataset.sbact) return;
   if (t.dataset.pick) choose(t.dataset.pick);
   else if (t.dataset.view) { state.phase = "result"; void showView(t.dataset.view); }
   else if (t.dataset.variant) void setVariant(t.dataset.variant);
@@ -440,6 +444,7 @@ document.addEventListener("click", (ev) => {
     case "restart": localStorage.removeItem(STORE); state.round = 0; state.rounds = []; void beginRound(); break;
     case "retry": void beginRound(); break;
     case "diag": void runDiagnostic(); break;
+    case "edit": sbLoad(state.bundle!.scene_id, state.bundle!.variant_id); setApp("sandbox"); break;
   }
 });
 
@@ -455,8 +460,21 @@ new ResizeObserver(() => render()).observe(canvas);
 // ---------------- boot ----------------
 declare global { interface Window { __op: unknown } }
 (window as Window).__op = state;
+(window as unknown as { __sb: unknown }).__sb = sandboxState;
+
+function setApp(app: "tutorial" | "sandbox") {
+  document.querySelectorAll("[data-app]").forEach((b) => b.closest(".app-seg") && b.setAttribute("aria-pressed", String((b as HTMLElement).dataset.app === app)));
+  ($(".game") as HTMLElement).hidden = app !== "tutorial";
+  $("#sandbox").hidden = app !== "sandbox";
+  document.body.dataset.app = app;
+  if (app === "sandbox") { showSandbox(); window.scrollTo({ top: 0 }); }
+}
 
 async function boot() {
+  initSandbox();
+  const sbq = new URLSearchParams(location.search).get("sb");
+  if (sbq) { if (decodeState(sbq)) { setApp("sandbox"); showSandbox(); sbRecompute(); } else toast("That sandbox link could not be read. Here is the first play."); }
+  if (new URLSearchParams(location.search).get("random")) { randomize(Number(new URLSearchParams(location.search).get("random")) || undefined); setApp("sandbox"); }
   try { state.catalog = await getJSON<Catalog>("scenes.json"); }
   catch (e) { state.error = `Scene catalogue did not load (${(e as Error).message}).`; setPhase("error"); return; }
   $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;

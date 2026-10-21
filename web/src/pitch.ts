@@ -16,6 +16,11 @@ export function layoutOf(w: number, h: number): Layout {
   return { s, ox: w - pad - (L + 2) * s, oy: (h - W * s) / 2, w, h };
 }
 const px = (l: Layout, x: number, y: number) => [l.ox + x * l.s, l.oy + y * l.s] as const;
+export function toPitch(canvas: HTMLCanvasElement, ex: number, ey: number): XY {
+  const l = layoutOf(canvas.clientWidth, canvas.clientHeight);
+  return [(ex - l.ox) / l.s, (ey - l.oy) / l.s];
+}
+export function pxPerMetre(canvas: HTMLCanvasElement) { return layoutOf(canvas.clientWidth, canvas.clientHeight).s; }
 
 export function framesAt(frames: Frame[], t: number): Frame {
   if (!frames.length) throw new Error("no frames");
@@ -75,12 +80,13 @@ function field(ctx: CanvasRenderingContext2D, l: Layout) {
   ctx.fillText("ATTACKING  \u2192", ax, ay);
 }
 
-export interface Route { points: XY[]; color: string; dashed: boolean; label: string; progress?: number }
+export interface Route { points: XY[]; color: string; dashed: boolean; label: string; progress?: number; alpha?: number; width?: number }
 export interface Highlight { id: string; label: string; ghostFrom?: XY }
 
 export interface DrawInput {
   frame: Frame; players: PlayerInfo[]; carrierId: string; routes: Route[]; targets?: Array<{ id: string; at: XY; label: string; hot: boolean; below?: boolean }>;
   highlights: Highlight[]; laneBand?: { from: XY; to: XY } | null; zones?: Array<{ at: XY; r: number }>; caption?: string;
+  arrows?: Array<{ at: XY; v: XY }>; selected?: string | null; offsideX?: number | null;
 }
 
 function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, at: XY, ring: string | null) {
@@ -118,6 +124,7 @@ function tag(ctx: CanvasRenderingContext2D, l: Layout, at: XY, text: string, col
 export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (w < 40 || h < 40) return;
   if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -136,7 +143,7 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   for (const r of d.routes) {
     if (r.points.length < 2) continue;
     ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.strokeStyle = r.color; ctx.lineWidth = r.dashed ? 2.2 : 3.4; ctx.globalAlpha = r.dashed ? 0.85 : 1;
+    ctx.strokeStyle = r.color; ctx.lineWidth = r.width ?? (r.dashed ? 2.2 : 3.4); ctx.globalAlpha = r.alpha ?? (r.dashed ? 0.85 : 1);
     if (r.dashed) ctx.setLineDash([8, 7]);
     ctx.beginPath();
     r.points.forEach((p, i) => { const [x, y] = px(l, p[0], p[1]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
@@ -157,7 +164,21 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     ctx.strokeStyle = t.hot ? YOU : "rgba(245,197,66,0.75)"; ctx.lineWidth = t.hot ? 3 : 1.8; ctx.setLineDash(t.hot ? [] : [4, 4]); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = YOU; ctx.fill();
   }
+  if (d.offsideX != null) {
+    const [ox, oy0] = px(l, d.offsideX, 0), [, oy1] = px(l, d.offsideX, W);
+    ctx.save(); ctx.setLineDash([2, 6]); ctx.strokeStyle = "rgba(242,238,227,0.35)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1); ctx.stroke(); ctx.restore();
+  }
+  for (const a of d.arrows ?? []) {
+    const [x1, y1] = px(l, ...a.at), [x2, y2] = px(l, a.at[0] + a.v[0] * 1.2, a.at[1] + a.v[1] * 1.2);
+    if (Math.hypot(x2 - x1, y2 - y1) < 4) continue;
+    ctx.save(); ctx.strokeStyle = "rgba(242,238,227,0.45)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    const ang = Math.atan2(y2 - y1, x2 - x1); ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 6 * Math.cos(ang - 0.5), y2 - 6 * Math.sin(ang - 0.5)); ctx.lineTo(x2 - 6 * Math.cos(ang + 0.5), y2 - 6 * Math.sin(ang + 0.5)); ctx.closePath();
+    ctx.fillStyle = "rgba(242,238,227,0.45)"; ctx.fill(); ctx.restore();
+  }
   const ringFor = new Map(d.highlights.map((h) => [h.id, "#E8574C"]));
+  if (d.selected) ringFor.set(d.selected, YOU);
   ringFor.set(d.carrierId, "#F3F0E7");
   for (const info of d.players) {
     const at = d.frame.p[info.id];

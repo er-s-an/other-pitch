@@ -12,6 +12,10 @@
     <header class="top">
       <a class="brand" href="/" aria-label="Other Pitch home"><span>Other</span><span>Pitch</span></a>
       <nav class="topnav">
+        <div class="seg app-seg" role="group" aria-label="Mode">
+          <button type="button" data-app="tutorial" aria-pressed="true">3 plays</button>
+          <button type="button" data-app="sandbox" aria-pressed="false">Sandbox</button>
+        </div>
         <div class="seg" role="group" aria-label="View">
           <button type="button" data-mode="casual" aria-pressed="true">Casual</button>
           <button type="button" data-mode="analyst" aria-pressed="false">Analyst</button>
@@ -42,6 +46,50 @@
         <p class="scene-kicker" id="scene-title">Loading</p>
         <p class="scene-brief" id="scene-brief">Loading the first play.</p>
         <div id="panel" aria-live="polite"><div class="card"><p>Loading the validated play bundle…</p></div></div>
+      </aside>
+    </main>
+
+    <main class="sandbox" id="sandbox" hidden>
+      <section class="sb-stage" aria-label="Sandbox pitch">
+        <div class="sb-head">
+          <div>
+            <p class="round">Sandbox · computed live in your browser</p>
+            <h1 class="ask">Change anything.</h1>
+          </div>
+          <label class="sb-load"><span>Start from</span>
+            <select id="sb-scene">
+              <option value="central-lane:base">Play 1 · You missed the middle</option>
+              <option value="central-lane:lane_closed">Play 1 · lane closed</option>
+              <option value="open-not-safe:base">Play 2 · Open is not safe</option>
+              <option value="close-call:base">Play 3 · A good choice can still fail</option>
+              <option value="heldout-01:base">Held-out input</option>
+            </select></label>
+        </div>
+        <div class="seg tools" role="group" aria-label="Edit tool">
+          <button type="button" data-tool="move" aria-pressed="true">Drag</button>
+          <button type="button" data-tool="ball" aria-pressed="false">Give ball</button>
+          <button type="button" data-tool="add-def" aria-pressed="false">+ Defender</button>
+          <button type="button" data-tool="add-att" aria-pressed="false">+ Attacker</button>
+          <button type="button" data-tool="remove" aria-pressed="false">Remove</button>
+        </div>
+        <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p></div>
+        <p class="fine" id="sb-perf"></p>
+        <p class="fine">Arrows show each attacker's current run. The dotted vertical line is the offside line (second-last defender); receivers beyond it are not offered. Faint dashed lines are every candidate branch; the solid one is selected.</p>
+      </section>
+      <aside class="side sb-side">
+        <p class="scene-kicker" id="sb-source">Sandbox</p>
+        <div class="row sb-actions">
+          <button class="btn ghost" type="button" data-sbact="random">Randomize legal setup</button>
+          <button class="btn ghost" type="button" data-sbact="share">Copy link to this setup</button>
+        </div>
+        <div class="card"><p class="kicker">Ranking by opportunity quality</p>
+          <div class="rank-head"><span></span><span>Action</span><span>Opportunity</span><span>Completion</span><span>Risk</span></div>
+          <div id="sb-rank"></div>
+          <p class="fine">Deltas compare with the state before your last change.</p>
+        </div>
+        <div class="card" id="sb-explain" aria-live="polite"></div>
+        <details class="card params"><summary>Model parameters</summary><div id="sb-params"></div>
+          <button class="btn ghost" type="button" data-sbact="reset-params">Reset parameters</button></details>
       </aside>
     </main>
 
