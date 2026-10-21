@@ -1,567 +1,486 @@
 import "./style.css";
-import { along, draw, easeOutCubic, ghostProgress, hitMarker, toPixel, type Layout, type Marker } from "./pitch";
-import type { CopyBlock, Frame, Mode, ModePack, Timeline, TraceFile, TraceMessage, XY } from "./types";
+import { OTHER, YOU, draw, framesAt, hitTarget, type Route, type Highlight } from "./pitch";
+import type { Branch, Bundle, Catalog, Explanation, Frame, Mode, Motion, Trace, XY } from "./types";
 
-const PLAY_MS = 3600;
-const REVEAL_MS = 2800;
+const DATA = "/data/v2";
+const ROUNDS = ["central-lane", "open-not-safe", "close-call"];
+const STORE = "otherpitch.v2.progress";
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const NEUTRAL: Record<Mode, string> = {
-  casual: "Calder has the ball outside the box.",
-  analyst: "One frame. Three actions.",
-  zh: "卡尔德在禁区前拿球。",
+type Phase = "intro" | "leadin" | "decide" | "branch" | "result" | "recap" | "error";
+interface RoundRecord { scene: string; pick: string; recorded: string; top: string; focus: string; verdict: string; explored: string[]; variantSeen: string[] }
+
+const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
+const el = (tag: string, cls = "", html = "") => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+const cache = new Map<string, Promise<unknown>>();
+function getJSON<T>(path: string): Promise<T> {
+  if (!cache.has(path)) cache.set(path, fetch(`${DATA}/${path}`).then((r) => { if (!r.ok) throw new Error(`${r.status} ${path}`); return r.json(); }).catch((e) => { cache.delete(path); throw e; }));
+  return cache.get(path) as Promise<T>;
+}
+
+const state = {
+  mode: "casual" as Mode,
+  phase: "intro" as Phase,
+  round: 0,
+  rounds: [] as RoundRecord[],
+  catalog: null as Catalog | null,
+  bundle: null as Bundle | null,
+  variant: "base",
+  pick: null as string | null,
+  view: null as string | null,
+  frames: [] as Frame[],
+  t: 0,
+  playing: false,
+  token: 0,
+  challenge: null as null | { scene: string; variant: string; pick: string | null },
+  deltaFrom: null as Bundle | null,
+  error: "" as string,
 };
 
-const NAMES: Record<string, string> = {
-  ingest: "Ingest",
-  analyst: "Analyst",
-  director: "Director",
-  qa: "QA",
-  overlay: "Overlay",
-  personalize: "Personalize",
-  broadcast: "Broadcast",
-};
+const canvas = $<HTMLCanvasElement>("#pitch");
 
-const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const base = import.meta.env.BASE_URL;
+// ---------------- helpers ----------------
+function branch(id: string, b = state.bundle!): Branch { return b.branches.find((x) => x.action_id === id)!; }
+function expl(id: string, b = state.bundle!): Explanation { return b.explanations[id]; }
+function claim(e: Explanation, id: string) { return e.claims.find((c) => c.claim_id === id)!; }
+function player(id: string | null) { return state.bundle!.players.find((p) => p.id === id); }
+function surname(id: string | null) { const p = player(id); return p ? p.name.split(" ").slice(-1)[0] : ""; }
+function top(b = state.bundle!) { return [...b.branches].sort((a, c) => c.metrics.opportunity_value - a.metrics.opportunity_value)[0]; }
+function pct(v: number | null) { return v == null ? "n/a" : `${Math.round(v * 100)}%`; }
+function score(v: number | null) { return v == null ? "n/a" : `${Math.round(v * 100)} / 100`; }
+function roleOf(id: string) {
+  if (id === state.pick) return "Your choice";
+  if (id === state.bundle!.recorded_action_id) return "Recorded";
+  return "Another option";
+}
+function save() { if (!state.challenge) localStorage.setItem(STORE, JSON.stringify({ round: state.round, rounds: state.rounds, mode: state.mode })); }
 
-const canvas = document.querySelector<HTMLCanvasElement>("#pitch");
-const chipLayer = document.querySelector<HTMLElement>("#chips");
-const clock = document.querySelector<HTMLElement>("#clock");
-const prompt = document.querySelector<HTMLElement>("#prompt");
-const choices = document.querySelector<HTMLElement>("#choices");
-const verdict = document.querySelector<HTMLElement>("#verdict");
-const playButton = document.querySelector<HTMLButtonElement>("#play");
-const replayButton = document.querySelector<HTMLButtonElement>("#replay");
-const traceDialog = document.querySelector<HTMLDialogElement>("#trace");
-const traceList = document.querySelector<HTMLElement>("#trace-list");
-const rejectLine = document.querySelector<HTMLElement>("#reject-line");
-const stage = document.querySelector<HTMLElement>("#stage");
-const facts = document.querySelector<HTMLElement>("#facts");
-const futureNodes = {
-  taken: document.querySelector<HTMLElement>('[data-slot="taken"]'),
-  pass: document.querySelector<HTMLElement>('[data-slot="pass"]'),
-  shot: document.querySelector<HTMLElement>('[data-slot="shot"]'),
-};
+function ballPath(frames: Frame[], upto: number): XY[] { return frames.filter((f) => f.t <= upto + 1e-6).map((f) => f.ball); }
 
-let timeline: Timeline | null = null;
-let mode: Mode = "casual";
-let phase: "idle" | "play" | "guess" | "reveal" | "done" = "idle";
-let choiceId: string | null = null;
-let hoverId: string | null = null;
+// ---------------- rendering ----------------
+function render() {
+  const b = state.bundle;
+  if (!b || !state.frames.length) return;
+  const frame = framesAt(state.frames, state.t);
+  const routes: Route[] = [];
+  const highlights: Highlight[] = [];
+  let targets: Array<{ id: string; at: XY; label: string; hot: boolean }> | undefined;
+  if (state.phase === "decide") {
+    targets = b.branches.map((x) => ({ id: x.action_id, at: (x.type === "shot" ? [103, 34] : x.target) as XY, label: x.label, hot: false, below: x.type === "shot" }));
+  }
+  if ((state.phase === "branch" || state.phase === "result") && state.view) {
+    const mine = state.view === state.pick;
+    routes.push({ points: ballPath(state.frames, state.t), color: mine ? YOU : OTHER, dashed: !mine,
+      label: `${roleOf(state.view)} \u00b7 Simulated` });
+  }
+  const key = b.key_defender_ids;
+  const iv = b.intervention;
+  if (iv) highlights.push({ id: iv.subject_id, label: `${surname(iv.subject_id)} \u00b7 moved`, ghostFrom: iv.field_changes[0].before as XY });
+  if (state.phase === "result" && state.view) {
+    const br = branch(state.view);
+    const blocker = br.inputs.blocking_defender_id as string | undefined;
+    if (blocker && !highlights.some((h) => h.id === blocker) && (br.metrics.p_lose_possession >= 0.3 || state.mode === "analyst"))
+      highlights.push({ id: blocker, label: surname(blocker) });
+  } else if (state.mode === "analyst") {
+    for (const k of key) if (!highlights.some((h) => h.id === k)) highlights.push({ id: k, label: "" });
+  }
+  let laneBand = null as null | { from: XY; to: XY };
+  let zones: Array<{ at: XY; r: number }> = [];
+  if (state.mode === "analyst" && state.view && state.phase === "result") {
+    const br = branch(state.view);
+    if (br.type === "pass") laneBand = { from: state.frames[0].ball, to: br.target };
+    const blocker = br.inputs.blocking_defender_id as string | undefined;
+    if (blocker && state.frames[0].p[blocker]) zones = [{ at: state.frames[0].p[blocker], r: 6 }];
+  }
+  const rel = state.t;
+  const caption = state.phase === "leadin" ? `Approach \u00b7 ${rel.toFixed(1)} s` :
+    state.phase === "intro" || state.phase === "decide" ? "Decision moment \u00b7 t = 0.0 s" :
+    `Decision + ${rel.toFixed(1)} s`;
+  draw(canvas, { frame, players: b.players, carrierId: b.carrier_id, routes, highlights, targets, laneBand, zones, caption });
+  $("#t-rel").textContent = caption;
+}
+
 let raf = 0;
-let startedAt = 0;
-let revealed = false;
-let lastLayout: Layout | null = null;
-let viewIndex = 0;
-let viewProgress = 0;
-
-document.documentElement.classList.add("js");
-
-function copy(): CopyBlock | null {
-  return timeline ? timeline.copy[mode] : null;
-}
-
-function clockText(matchT: number): string {
-  const whole = Math.max(0, Math.floor(matchT));
-  const minutes = Math.floor(whole / 60);
-  const seconds = whole % 60;
-  return `${minutes}:${seconds < 10 ? `0${seconds}` : String(seconds)}`;
-}
-
-function frameAt(index: number): Frame {
-  if (!timeline) throw new Error("no timeline");
-  const frames = timeline.frames;
-  const i = Math.max(0, Math.min(frames.length - 1, Math.floor(index)));
-  const j = Math.min(frames.length - 1, i + 1);
-  const u = Math.min(1, Math.max(0, index - i));
-  const a = frames[i];
-  const b = frames[j];
-  if (u === 0 || i === j) return a;
-  return {
-    index: i,
-    t: a.t + (b.t - a.t) * u,
-    match_t: a.match_t + (b.match_t - a.match_t) * u,
-    source: a.source,
-    ball: {
-      x: a.ball.x + (b.ball.x - a.ball.x) * u,
-      y: a.ball.y + (b.ball.y - a.ball.y) * u,
-    },
-    players: a.players.map((player, n) => {
-      const other = b.players[n] ?? player;
-      return {
-        ...player,
-        x: player.x + (other.x - player.x) * u,
-        y: player.y + (other.y - player.y) * u,
-      };
-    }),
-  };
-}
-
-function startIndex(): number {
-  if (!timeline) return 0;
-  return Math.max(0, timeline.decision_frame - 80);
-}
-
-function endIndex(): number {
-  if (!timeline) return 0;
-  return Math.min(timeline.frames.length - 1, timeline.decision_frame + 48);
-}
-
-function trailUntil(index: number): XY[] {
-  if (!timeline) return [];
-  const from = startIndex();
-  const end = Math.max(from, Math.min(timeline.frames.length - 1, Math.ceil(index)));
-  const points: XY[] = [];
-  for (let i = from; i <= end; i += 1) points.push(timeline.frames[i].ball);
-  const frame = frameAt(index);
-  const last = points[points.length - 1];
-  if (!last || last.x !== frame.ball.x || last.y !== frame.ball.y) points.push(frame.ball);
-  return points;
-}
-
-function markers(): Marker[] {
-  if (!timeline || (phase !== "guess" && phase !== "reveal" && phase !== "done")) return [];
-  return timeline.quiz.options.map((option) => ({
-    id: option.id,
-    at: option.end,
-    hot: option.id === hoverId || option.id === choiceId,
-  }));
-}
-
-function paint(index: number, progress: number): void {
-  if (!timeline || !canvas || !chipLayer) return;
-  viewIndex = index;
-  viewProgress = progress;
-  const showGhosts = (phase === "reveal" || phase === "done") && progress > 0;
-  const frame = frameAt(index);
-  const motion = !reduced && (phase === "reveal" || phase === "done");
-  lastLayout = draw(canvas, {
-    frame,
-    trail: trailUntil(index),
-    ghosts: timeline.ghosts,
-    progress,
-    markers: markers(),
-    home: timeline.match.home.color,
-    away: timeline.match.away.color,
-    actorId: timeline.taken.player_id,
-    showGhosts,
-    motion,
-  });
-  if (clock) {
-    const { home, away, score } = timeline.match;
-    clock.textContent = `${home.short} ${score.home}–${score.away} ${away.short}  ${clockText(frame.match_t)}`;
-  }
-  syncChips(frame, progress, showGhosts);
-}
-
-function syncChips(frame: Frame, progress: number, show: boolean): void {
-  if (!chipLayer || !lastLayout || !timeline) return;
-  if (!show) {
-    chipLayer.replaceChildren();
-    return;
-  }
-  const ghosts = timeline.ghosts;
-  const items: Array<{ at: XY; text: string; source: string; nudge: number; opacity: number }> = ghosts.map((ghost, index) => {
-    const local = ghostProgress(progress, index, ghosts.length);
-    return {
-      at: along(ghost, local),
-      text: ghost.label.text,
-      source: ghost.label.source,
-      nudge: (index - (ghosts.length - 1) / 2) * 32,
-      opacity: local <= 0.02 ? 0 : Math.min(1, 0.25 + local),
-    };
-  });
-  items.push({
-    at: frame.ball,
-    text: timeline.taken.label_text,
-    source: timeline.taken.source ?? "model_estimate",
-    nudge: 28,
-    opacity: 1,
-  });
-  while (chipLayer.childElementCount < items.length) {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chipLayer.appendChild(chip);
-  }
-  while (chipLayer.childElementCount > items.length) chipLayer.lastElementChild?.remove();
-  items.forEach((item, index) => {
-    const chip = chipLayer.children[index] as HTMLElement;
-    if (chip.textContent !== item.text) chip.textContent = item.text;
-    if (chip.dataset.source !== item.source) chip.dataset.source = item.source;
-    const pixel = toPixel(lastLayout as Layout, item.at.x, item.at.y);
-    const xRatio = pixel.px / (lastLayout as Layout).cssWidth;
-    const yRatio = pixel.py / (lastLayout as Layout).cssHeight;
-    chip.style.left = `${xRatio * 100}%`;
-    chip.style.top = `${yRatio * 100}%`;
-    const flipX = xRatio > 0.72;
-    const flipY = yRatio < 0.2;
-    const x = flipX ? "calc(-100% - 8px)" : "8px";
-    const y = flipY ? `${8 + item.nudge}px` : `calc(-130% + ${item.nudge}px)`;
-    chip.style.transform = `translate(${x}, ${y})`;
-    chip.style.opacity = String(item.opacity);
-  });
-}
-
-function stop(): void {
+function play(frames: Frame[], from: number, to: number, done: () => void) {
   cancelAnimationFrame(raf);
-}
-
-function setHidden(el: HTMLElement | null, hidden: boolean): void {
-  if (!el) return;
-  el.hidden = hidden;
-}
-
-function renderChoices(): void {
-  if (!choices || !timeline) return;
-  const block = copy();
-  choices.replaceChildren();
-  for (const option of timeline.quiz.options) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "choice";
-    button.dataset.id = option.id;
-    button.textContent = block?.options[option.id] ?? option.id;
-    if (revealed && option.id === timeline.quiz.correct_id) button.dataset.result = "played";
-    else if (revealed && option.id === choiceId) button.dataset.result = "picked";
-    else if (revealed) button.dataset.result = "other";
-    if (choiceId === option.id) button.setAttribute("aria-pressed", "true");
-    button.disabled = revealed;
-    button.addEventListener("click", () => choose(option.id));
-    button.addEventListener("pointerenter", () => {
-      hoverId = option.id;
-      hold();
-    });
-    button.addEventListener("pointerleave", () => {
-      hoverId = null;
-      hold();
-    });
-    choices.appendChild(button);
-  }
-}
-
-function renderWords(): void {
-  const block = copy();
-  if (!block || !timeline) return;
-  const lead = document.querySelector(".lead");
-  if (lead) lead.textContent = revealed ? block.caption : NEUTRAL[mode];
-  if (prompt) prompt.textContent = block.quiz_prompt;
-  setHidden(prompt, phase !== "guess");
-  setHidden(choices, phase === "idle" || phase === "play");
-  if (verdict) {
-    if (!revealed || !choiceId) {
-      verdict.textContent = "";
-      setHidden(verdict, true);
-    } else {
-      const right = choiceId === timeline.quiz.correct_id;
-      verdict.textContent = `${right ? block.verdict_right : block.verdict_wrong} ${block.reveal}`;
-      setHidden(verdict, false);
-    }
-  }
-  stage?.classList.toggle("is-guess", phase === "guess");
-  const pass = timeline.alternatives.find((item) => item.kind === "pass");
-  const shot = timeline.alternatives.find((item) => item.kind === "shot");
-  const rows: Array<[HTMLElement | null, string | undefined]> = [
-    [futureNodes.taken, timeline.taken.id],
-    [futureNodes.pass, pass?.id],
-    [futureNodes.shot, shot?.id],
-  ];
-  for (const [node, id] of rows) {
-    if (!node || !id) continue;
-    const title = node.querySelector("h3");
-    if (title) title.textContent = block.options[id] ?? id;
-    node.classList.toggle("played", revealed && id === timeline.quiz.correct_id);
-  }
-  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-en]")) {
-    const text = mode === "zh" ? button.dataset.zh : button.dataset.en;
-    if (text) button.textContent = text;
-  }
-}
-
-function hold(): void {
-  if (!timeline || phase === "play" || phase === "reveal") return;
-  paint(phase === "done" ? endIndex() : viewIndex, phase === "done" ? 1 : viewProgress);
-}
-
-function choose(id: string): void {
-  if (!timeline || phase !== "guess" || choiceId) return;
-  choiceId = id;
-  revealed = true;
-  phase = reduced ? "done" : "reveal";
-  renderWords();
-  renderChoices();
-  if (reduced) {
-    paint(endIndex(), 1);
-    return;
-  }
-  startedAt = performance.now();
-  stop();
-  raf = requestAnimationFrame(loop);
-}
-
-function loop(now: number): void {
-  if (!timeline) return;
-  if (phase === "play") {
-    const u = Math.min(1, (now - startedAt) / PLAY_MS);
-    const eased = easeOutCubic(u);
-    const index = startIndex() + (timeline.decision_frame - startIndex()) * eased;
-    paint(index, 0);
-    if (u >= 1) {
-      phase = "guess";
-      renderWords();
-      renderChoices();
-      paint(timeline.decision_frame, 0);
-      return;
-    }
-  } else if (phase === "reveal") {
-    const u = Math.min(1, (now - startedAt) / REVEAL_MS);
-    const eased = easeOutCubic(u);
-    const index = timeline.decision_frame + (endIndex() - timeline.decision_frame) * eased;
-    paint(index, Math.max(0.04, eased));
-    if (u >= 1) {
-      phase = "done";
-      paint(endIndex(), 1);
-      renderWords();
-    }
-  } else if (phase === "done" && !reduced) {
-    paint(endIndex(), 1);
-  } else {
-    return;
-  }
-  raf = requestAnimationFrame(loop);
-}
-
-function play(): void {
-  if (!timeline) return;
-  stop();
-  choiceId = null;
-  hoverId = null;
-  revealed = false;
-  renderChoices();
-  if (reduced) {
-    phase = "guess";
-    renderWords();
-    paint(timeline.decision_frame, 0);
-    return;
-  }
-  phase = "play";
-  renderWords();
-  startedAt = performance.now();
-  raf = requestAnimationFrame(loop);
-}
-
-function messageText(message: TraceMessage): string {
-  if (message.intent === "qa_reject") {
-    return (message.payload.reasons ?? []).join(" ") || "Rejected.";
-  }
-  if (message.intent === "qa_pass") return "Every number in the line is in the cited evidence.";
-  if (message.intent === "moment_submitted") {
-    const attempt = message.payload.attempt ?? 1;
-    return attempt > 1 ? "Resubmitted without the figure QA refused." : "First caption, with a figure the evidence does not hold.";
-  }
-  if (message.intent === "analysis_reconfirmed") return "Decision frame scored again. The figures did not move.";
-  if (message.intent === "analysis_ready") return message.payload.note || "Shot and pass values are ready.";
-  if (message.intent === "match_ready") return "Synthetic tracking for the minute is in.";
-  if (message.intent === "timeline_ready") return "Ghost trails and probability labels are timed.";
-  if (message.intent === "modes_ready") return "Casual, analyst, and Chinese lines are ready.";
-  return message.payload.note || message.payload.ask || message.intent;
-}
-
-function renderTrace(messages: TraceMessage[]): void {
-  if (!traceList) return;
-  traceList.replaceChildren();
-  for (const message of messages) {
-    const retry = message.intent === "analysis_reconfirmed"
-      || (message.intent === "moment_submitted" && (message.payload.attempt ?? 1) > 1);
-    const rejected = message.intent === "qa_reject";
-    const block = document.createElement("article");
-    block.className = rejected ? "msg sent-back" : retry ? "msg retry" : "msg";
-    const who = document.createElement("p");
-    who.className = "who";
-    const from = NAMES[message.sender] ?? message.sender;
-    const to = NAMES[message.receiver] ?? message.receiver;
-    const tag = rejected ? "Sent back" : retry ? "Retry" : "";
-    who.textContent = tag ? `${from} to ${to}. ${tag}` : `${from} to ${to}`;
-    const what = document.createElement("p");
-    what.textContent = messageText(message);
-    block.append(who, what);
-    traceList.appendChild(block);
-  }
-}
-
-function renderLegend(): void {
-  const legend = document.querySelector("#legend");
-  if (!legend || !timeline) return;
-  legend.replaceChildren();
-  for (const item of timeline.legend) {
-    const span = document.createElement("span");
-    const swatch = document.createElement("i");
-    swatch.className = "swatch";
-    swatch.dataset.source = item.source;
-    span.append(swatch, document.createTextNode(item.label));
-    legend.append(span);
-  }
-}
-
-function applyPack(next: Mode, pack: ModePack): void {
-  if (!timeline || !pack.moment?.caption || !pack.quiz?.prompt) return;
-  const options: Record<string, string> = { ...timeline.copy[next].options };
-  for (const option of pack.quiz.options ?? []) {
-    if (option.label) options[option.id] = option.label;
-  }
-  timeline.copy[next] = {
-    caption: pack.moment.caption,
-    reveal: pack.moment.reveal ?? "",
-    quiz_prompt: pack.quiz.prompt,
-    verdict_right: pack.quiz.verdict_right ?? "",
-    verdict_wrong: pack.quiz.verdict_wrong ?? "",
-    options,
+  state.frames = frames;
+  if (reduceMotion) { state.t = to; render(); done(); return; }
+  const start = performance.now(), dur = (to - from) * 1000;
+  const token = state.token;
+  state.playing = true;
+  const step = (now: number) => {
+    if (token !== state.token) return;
+    const u = Math.min(1, (now - start) / dur);
+    state.t = from + (to - from) * u;
+    render();
+    if (u < 1) raf = requestAnimationFrame(step); else { state.playing = false; done(); }
   };
-  if (pack.legend?.length) timeline.legend = pack.legend;
+  raf = requestAnimationFrame(step);
 }
 
-function setMode(next: Mode): void {
-  mode = next;
-  document.documentElement.lang = next === "zh" ? "zh-Hans" : "en";
-  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-mode]")) {
-    button.setAttribute("aria-pressed", button.dataset.mode === next ? "true" : "false");
-  }
-  renderWords();
-  renderChoices();
-  if (phase === "done" || phase === "guess") hold();
+// ---------------- panels ----------------
+function setPhase(p: Phase) {
+  state.phase = p;
+  document.body.dataset.phase = p;
+  renderPanel();
+  render();
 }
 
-function bindModes(): void {
-  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-mode]")) {
-    button.addEventListener("click", () => {
-      const next = button.dataset.mode;
-      if (next === "casual" || next === "analyst" || next === "zh") setMode(next);
-    });
-  }
+function header() {
+  const b = state.bundle!;
+  $("#round-tag").textContent = state.challenge ? "Friend's challenge" : `Round ${state.round + 1} of ${ROUNDS.length}`;
+  $("#scoreline").textContent = `${b.clock} \u00b7 ${b.teams.home.short} ${b.score.home}\u2013${b.score.away} ${b.teams.away.short}`;
+  $("#scene-title").textContent = b.title;
+  $("#scene-brief").textContent = b.brief;
+  $("#variant-tag").textContent = b.variant_id === "base" ? "" : `Condition: ${b.intervention?.label}`;
+  $("#variant-tag").hidden = b.variant_id === "base";
 }
 
-function openTrace(): void {
-  traceDialog?.showModal();
-  for (const button of document.querySelectorAll("[data-open-trace]")) {
-    button.setAttribute("aria-expanded", "true");
-  }
+function metricRow(label: string, value: string, hint: string) {
+  return `<div class="metric"><dt>${esc(label)}</dt><dd>${esc(value)}</dd><p>${esc(hint)}</p></div>`;
 }
 
-function pointOnCanvas(event: MouseEvent): { x: number; y: number } | null {
-  if (!canvas) return null;
-  const rect = canvas.getBoundingClientRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-
-async function load(): Promise<void> {
-  const [timelineRes, traceRes, casualRes, analystRes, zhRes] = await Promise.all([
-    fetch(`${base}data/timeline.json`),
-    fetch(`${base}data/trace.json`),
-    fetch(`${base}data/casual.json`),
-    fetch(`${base}data/analyst.json`),
-    fetch(`${base}data/zh.json`),
-  ]);
-  if (!timelineRes.ok) throw new Error("timeline");
-  timeline = (await timelineRes.json()) as Timeline;
-  const packs: Array<[Mode, Response]> = [
-    ["casual", casualRes],
-    ["analyst", analystRes],
-    ["zh", zhRes],
-  ];
-  for (const [name, res] of packs) {
-    if (res.ok) applyPack(name, (await res.json()) as ModePack);
-  }
-  if (traceRes.ok) {
-    const trace = (await traceRes.json()) as TraceFile;
-    renderTrace(trace.messages);
-    const reject = trace.messages.find((item) => item.intent === "qa_reject");
-    if (rejectLine && reject?.payload.reasons?.[0]) {
-      rejectLine.textContent = `QA sent it back: ${reject.payload.reasons[0]}. The analyst recomputed the frame and the director wrote the line again.`;
-    }
-  }
-  const note = document.querySelector("#note");
-  if (note && timeline.match.note) note.textContent = timeline.match.note;
-  if (facts) facts.textContent = timeline.match.venue;
-  renderLegend();
-  renderChoices();
-  renderWords();
-  paint(reduced ? timeline.decision_frame : startIndex(), 0);
-  if (reduced) {
-    phase = "guess";
-    renderWords();
-    paint(timeline.decision_frame, 0);
+function resultCard(): string {
+  const b = state.bundle!, id = state.view!, e = expl(id), br = branch(id);
+  const isMine = id === state.pick;
+  const mode = state.mode;
+  const text = mode === "casual" ? e.casual : e.analyst;
+  let html = `<p class="role role-${isMine ? "you" : "other"}">${esc(roleOf(id))}: ${esc(br.label)}</p>`;
+  html += `<h3 class="verdict">${esc(isMine ? text.headline : (e.verdict === "strongest" ? "This route was the strongest here." : text.headline))}</h3>`;
+  html += `<p class="why">${esc(text.sentence)}</p>`;
+  if (mode === "casual") {
+    html += `<dl class="metrics">` + e.casual.metric_claim_ids.map((cid) => {
+      const c = claim(e, cid);
+      const hint = c.metric_name === "opportunity_value" ? "Synthetic chance score for the next 8 s. Not a goal probability." : "Internal estimate that the first pass arrives.";
+      return metricRow(c.label, c.display_value, hint);
+    }).join("") + `</dl>`;
+    html += `<p class="fine">${esc(e.casual.uncertainty)} Synthetic scenario.</p>`;
   } else {
-    play();
+    html += `<table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Shot quality</th><th>Opportunity</th></tr></thead><tbody>`;
+    for (const x of b.branches) {
+      html += `<tr class="${x.action_id === id ? "on" : ""}"><td>${esc(x.label)}<small>${esc(roleOf(x.action_id))}</small></td><td>${pct(x.metrics.p_complete)}</td><td>${pct(x.metrics.p_lose_possession)}</td><td>${score(x.metrics.q_shot)}</td><td><b>${score(x.metrics.opportunity_value)}</b></td></tr>`;
+    }
+    html += `</tbody></table>`;
+    html += `<h4>Outcome tree \u00b7 ${esc(br.label)}</h4><ul class="tree">` + br.outcome_tree.leaves.map((l) =>
+      `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("") + `</ul>`;
+    const inp = br.inputs;
+    if (br.type === "pass") html += `<p class="fine">Inputs: pass ${Number(inp.pass_distance_m).toFixed(1)} m, lane block ${Number(inp.lane_block).toFixed(2)} (nearest: ${esc(surname(inp.blocking_defender_id as string))}), receiver pressure ${Number(inp.receiver_pressure_on_arrival).toFixed(2)}.</p>`;
+    else html += `<p class="fine">Inputs: shot from ${Number(inp.shot_distance_m).toFixed(1)} m, pressure ${Number(inp.shot_pressure).toFixed(2)}.</p>`;
+    html += `<details class="defs"><summary>Definitions, assumptions, evidence</summary><ul>` +
+      Object.entries(b.metric_definitions).map(([k, d]) => `<li><b>${esc(d.label)}</b> (${esc(k)}, ${esc(d.unit)}): ${esc(d.definition)}</li>`).join("") +
+      e.analyst.assumptions.map((a) => `<li>${esc(a)}</li>`).join("") +
+      `<li>Evidence: ${e.claims.map((c) => `<code>${esc(c.evidence_id)}</code>`).join(" ")}</li></ul></details>`;
+  }
+  return html;
+}
+
+function compareTabs(): string {
+  const b = state.bundle!;
+  const order = [state.pick!, b.recorded_action_id, ...b.branches.map((x) => x.action_id)].filter((v, i, a) => a.indexOf(v) === i);
+  return `<div class="tabs" role="tablist" aria-label="Compare routes from the same moment">` + order.map((id) =>
+    `<button role="tab" type="button" data-view="${id}" aria-selected="${id === state.view}" class="tab ${id === state.pick ? "tab-you" : ""}"><span>${esc(roleOf(id))}${id === b.recorded_action_id && id === state.pick ? " \u00b7 Recorded" : ""}</span>${esc(branch(id).label)}</button>`).join("") + `</div>`;
+}
+
+function conditionBox(): string {
+  const b = state.bundle!;
+  const opts = b.available_interventions;
+  if (!opts.length && b.variant_id === "base") return "";
+  const ivs = opts.length ? opts : [];
+  const label = ivs[0]?.label ?? b.intervention?.label ?? "";
+  const on = b.variant_id !== "base";
+  let delta = "";
+  if (state.deltaFrom && state.view) {
+    const prev = state.deltaFrom.branches.find((x) => x.action_id === state.view)!;
+    const now = branch(state.view);
+    const parts = [];
+    if (now.metrics.p_complete != null) parts.push(`Completion ${pct(prev.metrics.p_complete)} \u2192 ${pct(now.metrics.p_complete)}`);
+    parts.push(`Opportunity ${score(prev.metrics.opportunity_value)} \u2192 ${score(now.metrics.opportunity_value)}`);
+    const t0 = top(state.deltaFrom).action_id, t1 = top().action_id;
+    const rank = t0 === t1 ? `Strongest route unchanged: ${branch(t1).label}.` : `Strongest route changes: ${branch(t0, state.deltaFrom).label} \u2192 ${branch(t1).label}.`;
+    delta = `<p class="delta"><b>${esc(branch(state.view).label)}:</b> ${esc(parts.join(" \u00b7 "))}. ${esc(rank)}</p>`;
+  }
+  return `<div class="condition"><p class="kicker">Change one condition</p>
+    <div class="seg" role="group" aria-label="Defensive condition">
+      <button type="button" data-variant="base" aria-pressed="${!on}">Base</button>
+      <button type="button" data-variant="${esc(ivs[0]?.variant_id ?? b.variant_id)}" aria-pressed="${on}">${esc(label)}</button>
+    </div>${delta}
+    <p class="fine">Same moment, same rules. Only one defender's position changes. ${esc(b.generation.cache_status === "cached_validated_result" ? "Precomputed by the same engine and validated; loaded from cache." : "")}</p></div>`;
+}
+
+function renderPanel() {
+  const panel = $("#panel");
+  const b = state.bundle;
+  panel.innerHTML = "";
+  if (state.phase === "error") {
+    panel.append(el("div", "card", `<h3>Could not load this play.</h3><p>${esc(state.error ?? "")}</p><button class="btn" type="button" data-act="retry">Retry</button>`));
+    return;
+  }
+  if (!b) return;
+  header();
+  if (state.phase === "intro") {
+    panel.append(el("div", "card intro", `<p class="kicker">${state.round === 0 && !state.challenge ? "Your call" : "Next play"}</p>
+      <h3>${esc(b.tactic)}</h3>
+      <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The ball carrier has a white ring.</p>
+      <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
+      <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button></div>`));
+  } else if (state.phase === "leadin") {
+    panel.append(el("div", "card", `<p class="kicker">Approach</p><h3>Watch the runs.</h3><button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>`));
+  } else if (state.phase === "decide") {
+    const c = el("div", "card decide", `<p class="kicker">Decision \u00b7 t = 0.0 s</p><h3>What would you do?</h3><p>Pick a route, or tap a target on the pitch.</p>`);
+    const list = el("div", "choices");
+    for (const x of b.branches) {
+      const btn = el("button", "choice", `<span>${esc(x.label)}</span><small>${x.type === "shot" ? "Shot" : "Ground pass to " + esc(surname(x.receiver_id))}</small>`) as HTMLButtonElement;
+      btn.type = "button"; btn.dataset.pick = x.action_id;
+      list.append(btn);
+    }
+    c.append(list);
+    if (state.challenge?.pick) c.append(el("p", "fine", "Your friend already chose. You will see their pick after yours."));
+    panel.append(c);
+  } else if (state.phase === "branch") {
+    panel.append(el("div", "card", `<p class="kicker">${esc(roleOf(state.view!))} \u00b7 one simulated possibility</p><h3>${esc(branch(state.view!).label)}</h3><p>Playing the branch your choice creates.</p>`));
+  } else if (state.phase === "result") {
+    const card = el("div", "card result");
+    card.innerHTML = compareTabs() + `<div class="result-body" aria-live="polite">${resultCard()}</div>` + conditionBox();
+    if (state.challenge?.pick) {
+      card.append(el("p", "friend", `Your friend chose <b>${esc(branch(state.challenge.pick).label)}</b>. You chose <b>${esc(branch(state.pick!).label)}</b>.`));
+    }
+    const row = el("div", "row");
+    row.innerHTML = `<button class="btn ghost" type="button" data-act="replay">Replay</button>
+      <button class="btn ghost" type="button" data-act="share">Challenge a friend</button>
+      <button class="btn primary" type="button" data-act="next">${state.challenge ? "Play the full challenge" : state.round + 1 < ROUNDS.length ? "Next play" : "See your recap"}</button>`;
+    card.append(row);
+    panel.append(card);
+  } else if (state.phase === "recap") {
+    renderRecap(panel);
   }
 }
 
-playButton?.addEventListener("click", () => play());
-replayButton?.addEventListener("click", () => {
-  document.querySelector("#second")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
-  play();
-});
-for (const button of document.querySelectorAll<HTMLButtonElement>("[data-open-trace]")) {
-  button.addEventListener("click", openTrace);
+const TAKEAWAY: Record<string, string> = {
+  receiver_space: "Look for the run before the lane closes.",
+  lane_blocked: "Free receiver, blocked path: the danger is on the way there.",
+  close_tradeoff: "Two close options: a good choice can still fail.",
+  shot_quality: "Where and under how much pressure the shot happens decides its quality.",
+  insufficient_evidence: "Not enough evidence to explain this one.",
+};
+
+function renderRecap(panel: HTMLElement) {
+  const c = el("div", "card recap");
+  c.innerHTML = `<p class="kicker">Recap</p><h3>Three calls, three tactical ideas.</h3>`;
+  const ol = el("ol", "recap-list");
+  for (const r of state.rounds) {
+    ol.append(el("li", "", `<b>${esc(r.scene.replace(/-/g, " "))}</b><span>You: ${esc(r.pick.replace(/_/g, " "))}</span><span>Recorded: ${esc(r.recorded.replace(/_/g, " "))}</span><span>Strongest in model: ${esc(r.top.replace(/_/g, " "))}</span><em>${esc(TAKEAWAY[r.focus] ?? "")}</em>`));
+  }
+  c.append(ol);
+  const lean = state.rounds.filter((r) => r.pick.startsWith("shoot")).length;
+  c.append(el("p", "fine", `In these three plays you shot ${lean} time${lean === 1 ? "" : "s"}. Three plays only show this session's tendency, not your skill.`));
+  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Copy challenge link</button><button class="btn primary" type="button" data-act="restart">Play again</button>`));
+  panel.append(c);
 }
-document.querySelector("#close-trace")?.addEventListener("click", () => traceDialog?.close());
-traceDialog?.addEventListener("close", () => {
-  for (const button of document.querySelectorAll("[data-open-trace]")) {
-    button.setAttribute("aria-expanded", "false");
+
+// ---------------- flow ----------------
+async function loadScene(scene: string, variant: string, keepView = false) {
+  const token = ++state.token;
+  const prev = state.bundle;
+  try {
+    const b = await getJSON<Bundle>(`${scene}/${variant}/bundle.json`);
+    if (token !== state.token) return;
+    state.deltaFrom = keepView && prev && prev.scene_id === scene && prev.variant_id !== variant ? prev : null;
+    state.bundle = b;
+    state.variant = variant;
+    return b;
+  } catch (e) {
+    if (token !== state.token) return;
+    state.error = `The validated bundle for this play did not load (${(e as Error).message}). The previous screen is kept.`;
+    if (!prev) setPhase("error"); else { state.bundle = prev; toast(state.error); }
+    return undefined;
+  }
+}
+
+async function showView(id: string) {
+  const b = state.bundle!;
+  state.view = id;
+  const token = ++state.token;
+  let m: Motion;
+  try { m = await getJSON<Motion>(`${b.scene_id}/${b.variant_id}/${branch(id).frames_ref}`); }
+  catch (e) { toast(`Motion for this route did not load. ${(e as Error).message}`); return; }
+  if (token !== state.token) return;
+  setPhase(state.phase === "result" ? "result" : "branch");
+  const end = m.frames[m.frames.length - 1].t;
+  play(m.frames, 0, end, () => { if (state.phase === "branch") afterBranch(); else render(); });
+}
+
+function afterBranch() {
+  const b = state.bundle!;
+  const rec = state.rounds[state.round];
+  if (!state.challenge && rec) { if (!rec.explored.includes(state.view!)) rec.explored.push(state.view!); save(); }
+  setPhase("result");
+  void b;
+}
+
+async function beginRound() {
+  const scene = state.challenge ? state.challenge.scene : ROUNDS[state.round];
+  const b = await loadScene(scene, state.challenge?.variant ?? "base");
+  if (!b) return;
+  state.pick = null; state.view = null; state.deltaFrom = null;
+  state.frames = b.leadin.frames.concat([{ t: 0, ball: b.leadin.frames[b.leadin.frames.length - 1].ball, p: Object.fromEntries(b.players.map((p) => [p.id, [p.x, p.y] as XY])) }]);
+  state.t = 0;
+  setPhase("intro");
+  loadTrace();
+}
+
+function startLeadin() {
+  const b = state.bundle!;
+  setPhase("leadin");
+  play(state.frames, b.leadin.frames[0].t, 0, () => setPhase("decide"));
+}
+
+function choose(id: string) {
+  if (state.phase !== "decide") return;
+  const b = state.bundle!;
+  state.pick = id;
+  if (!state.challenge) {
+    state.rounds[state.round] = { scene: b.scene_id, pick: id, recorded: b.recorded_action_id, top: top().action_id, focus: b.focus, verdict: expl(id).verdict, explored: [], variantSeen: [b.variant_id] };
+    save();
+  }
+  state.phase = "branch";
+  void showView(id);
+}
+
+async function setVariant(v: string) {
+  if (!state.bundle || v === state.bundle.variant_id) return;
+  const view = state.view;
+  const b = await loadScene(state.bundle.scene_id, v, true);
+  if (!b || !view) return;
+  const rec = state.rounds[state.round];
+  if (rec && !rec.variantSeen.includes(v)) { rec.variantSeen.push(v); save(); }
+  state.phase = "result";
+  await showView(view);
+}
+
+function shareURL(scene: string, pick: string | null) {
+  const b = state.bundle!;
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("challenge", scene);
+  u.searchParams.set("v", b.scenario_version);
+  u.searchParams.set("variant", "base");
+  if (pick) u.searchParams.set("pick", pick);
+  return u.toString();
+}
+
+async function copy(text: string) {
+  try { await navigator.clipboard.writeText(text); toast("Challenge link copied. Your pick stays hidden until they choose."); }
+  catch { prompt("Copy this challenge link", text); }
+}
+
+let toastTimer = 0;
+function toast(msg: string) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = window.setTimeout(() => (t.hidden = true), 4200);
+}
+
+// ---------------- under the hood ----------------
+async function loadTrace() {
+  const b = state.bundle!;
+  const box = $("#hood-run");
+  try {
+    const tr = await getJSON<Trace>(`${b.scene_id}/${b.variant_id}/trace.json`);
+    box.innerHTML = traceHTML(tr, b);
+  } catch { box.textContent = "Trace not available."; }
+}
+
+function traceHTML(tr: Trace, b?: Bundle) {
+  const steps = tr.steps.map((s) => `<li><b>${esc(s.agent.replace(/_/g, " "))}</b> <code>${esc(s.intent)}</code></li>`).join("");
+  const calls = tr.tool_calls.map((c) => `<li><code>${esc(c.tool)}</code> by ${esc(c.agent.replace(/_/g, " "))} <small>${esc(JSON.stringify(c.args).slice(0, 80))} \u00b7 ${c.ms} ms</small></li>`).join("");
+  return `<p class="fine">Run <code>${esc(tr.run_id)}</code> \u00b7 ${esc(tr.framework_package)} \u00b7 explainer: <code>${esc(tr.actual_model_ids.explainer)}</code> \u00b7 QA: <b>${esc(tr.qa_status)}</b>${b ? ` \u00b7 generated ${esc(b.generation.generated_at)} (producer generation, served from cache)` : ""}</p>
+    <div class="hood-cols"><div><h4>Workflow steps</h4><ol class="steps">${steps}</ol></div><div><h4>MCP tool calls (${tr.tool_calls.length})</h4><ol class="calls">${calls}</ol></div></div>`;
+}
+
+async function runDiagnostic() {
+  const box = $("#hood-diag");
+  box.innerHTML = "Loading the diagnostic run\u2026";
+  try {
+    const tr = await getJSON<Trace>("diagnostics/fault-injection-trace.json");
+    const rej = tr.steps.find((s) => s.intent === "claim_rejected");
+    const errs = rej ? Object.values((rej.detail as { errors: Record<string, string[]> }).errors).flat() : [];
+    box.innerHTML = `<p class="diag-label">Diagnostic test. A wrong-subject claim was injected on purpose; normal runs do not do this.</p>
+      <ul class="errs">${errs.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` + traceHTML(tr);
+  } catch (e) { box.textContent = `Diagnostic trace did not load: ${(e as Error).message}`; }
+}
+
+async function loadHeldout() {
+  const box = $("#hood-heldout");
+  try {
+    const b = await getJSON<Bundle>("heldout-01/base/bundle.json");
+    box.innerHTML = `<p class="fine">${esc(b.brief)} QA: <b>${esc(b.validation.qa_status)}</b> \u00b7 run <code>${esc(b.generation.run_id)}</code></p><table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Opportunity</th><th>Generated sentence</th></tr></thead><tbody>` +
+      b.branches.map((x) => `<tr><td>${esc(x.label)}</td><td>${pct(x.metrics.p_complete)}</td><td>${pct(x.metrics.p_lose_possession)}</td><td>${score(x.metrics.opportunity_value)}</td><td>${esc(b.explanations[x.action_id].casual.sentence)}</td></tr>`).join("") + `</tbody></table>`;
+  } catch { box.textContent = "Held-out bundle not available."; }
+}
+
+// ---------------- events ----------------
+document.addEventListener("click", (ev) => {
+  const t = (ev.target as HTMLElement).closest("button") as HTMLButtonElement | null;
+  if (!t) return;
+  if (t.dataset.pick) choose(t.dataset.pick);
+  else if (t.dataset.view) { state.phase = "result"; void showView(t.dataset.view); }
+  else if (t.dataset.variant) void setVariant(t.dataset.variant);
+  else if (t.dataset.mode) { state.mode = t.dataset.mode as Mode; document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode))); save(); renderPanel(); render(); }
+  else switch (t.dataset.act) {
+    case "start": startLeadin(); break;
+    case "skip": state.token++; state.t = 0; setPhase("decide"); break;
+    case "replay": if (state.view) void showView(state.view); break;
+    case "share": void copy(shareURL(state.bundle!.scene_id, state.pick)); break;
+    case "share-recap": void copy(shareURL(ROUNDS[0], state.rounds[0]?.pick ?? null)); break;
+    case "next":
+      if (state.challenge) { state.challenge = null; history.replaceState(null, "", location.pathname); state.round = 0; state.rounds = []; void beginRound(); }
+      else if (state.round + 1 < ROUNDS.length) { state.round++; save(); void beginRound(); }
+      else { state.round = ROUNDS.length; save(); setPhase("recap"); }
+      break;
+    case "restart": localStorage.removeItem(STORE); state.round = 0; state.rounds = []; void beginRound(); break;
+    case "retry": void beginRound(); break;
+    case "diag": void runDiagnostic(); break;
   }
 });
-canvas?.addEventListener("click", (event) => {
-  if (phase !== "guess" || !lastLayout) return;
-  const point = pointOnCanvas(event);
-  if (!point) return;
-  const id = hitMarker(lastLayout, markers(), point.x, point.y);
+
+canvas.addEventListener("click", (ev) => {
+  if (state.phase !== "decide" || !state.bundle) return;
+  const r = canvas.getBoundingClientRect();
+  const id = hitTarget(canvas, state.bundle.branches.map((b) => ({ id: b.action_id, at: (b.type === "shot" ? [103, 34] : b.target) as XY })), ev.clientX - r.left, ev.clientY - r.top);
   if (id) choose(id);
 });
-canvas?.addEventListener("pointermove", (event) => {
-  if (phase !== "guess" || !lastLayout) return;
-  const point = pointOnCanvas(event);
-  if (!point) return;
-  const id = hitMarker(lastLayout, markers(), point.x, point.y);
-  if (id === hoverId) return;
-  hoverId = id;
-  hold();
-});
-window.addEventListener("resize", () => {
-  if (phase === "play" || phase === "reveal") return;
-  hold();
-});
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    stop();
-    return;
-  }
-  if ((phase === "done" || phase === "play" || phase === "reveal") && !reduced) {
-    raf = requestAnimationFrame(loop);
-  }
-});
-bindModes();
-watchReveals();
 
-function watchReveals(): void {
-  const nodes = document.querySelectorAll<HTMLElement>("[data-reveal]");
-  if (reduced || !("IntersectionObserver" in window)) {
-    nodes.forEach((node) => node.classList.add("is-in"));
-    return;
-  }
-  const io = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      entry.target.classList.add("is-in");
-      io.unobserve(entry.target);
+new ResizeObserver(() => render()).observe(canvas);
+
+// ---------------- boot ----------------
+declare global { interface Window { __op: unknown } }
+(window as Window).__op = state;
+
+async function boot() {
+  try { state.catalog = await getJSON<Catalog>("scenes.json"); }
+  catch (e) { state.error = `Scene catalogue did not load (${(e as Error).message}).`; setPhase("error"); return; }
+  $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;
+  const q = new URLSearchParams(location.search);
+  const ch = q.get("challenge");
+  if (ch) {
+    const sc = state.catalog.scenes.find((s) => s.scene_id === ch && !s.heldout);
+    const variant = q.get("variant") ?? "base";
+    if (!sc || !sc.variants.some((v) => v.variant_id === variant)) toast("That challenge is not available. Here is the current play.");
+    else {
+      if (q.get("v") && q.get("v") !== sc.scenario_version) toast("This challenge was made for an older version of the play. Your answer will not count as the same challenge.");
+      const pickOk = q.get("pick") && (await getJSON<Bundle>(`${ch}/${variant}/bundle.json`)).branches.some((b) => b.action_id === q.get("pick"));
+      state.challenge = { scene: ch, variant, pick: pickOk ? q.get("pick") : null };
     }
-  }, { rootMargin: "0px 0px -10% 0px", threshold: 0.12 });
-  nodes.forEach((node) => io.observe(node));
+  } else {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE) ?? "null");
+      if (saved && Array.isArray(saved.rounds)) { state.rounds = saved.rounds; state.round = Math.min(saved.round, ROUNDS.length); state.mode = saved.mode ?? "casual"; }
+    } catch { /* ignore */ }
+  }
+  document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode)));
+  void loadHeldout();
+  if (state.round >= ROUNDS.length && !state.challenge) { state.round = ROUNDS.length - 1; await beginRound(); state.round = ROUNDS.length; setPhase("recap"); return; }
+  await beginRound();
+  if (state.rounds.length && state.round > 0 && !state.challenge) toast(`Welcome back. Resuming at round ${state.round + 1}. Use Play again in the recap to restart.`);
 }
-
-void document.fonts.ready.then(() => {
-  if (phase === "play" || phase === "reveal") return;
-  hold();
-});
-
-void load().catch(() => {
-  const lead = document.querySelector(".lead");
-  if (lead) lead.textContent = "The replay file did not load.";
-});
+void boot();

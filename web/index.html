@@ -3,124 +3,93 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#121410" />
-    <title>Other Pitch</title>
+    <meta name="theme-color" content="#0b1a14" />
+    <meta name="description" content="Other Pitch: make the call in a football replay, see your branch, compare the alternative, change one defensive condition." />
+    <title>Other Pitch · Your call. Another possibility.</title>
     <link rel="icon" href="/favicon.svg" />
   </head>
-  <body>
-    <div class="opener">
-      <div class="pin">
-        <h1>
-          <span class="half half-a">Other</span>
-          <span class="half half-b">Pitch</span>
-        </h1>
-      </div>
-      <main class="play" id="second">
+  <body data-phase="intro">
+    <header class="top">
+      <a class="brand" href="/" aria-label="Other Pitch home"><span>Other</span><span>Pitch</span></a>
+      <nav class="topnav">
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" data-mode="casual" aria-pressed="true">Casual</button>
+          <button type="button" data-mode="analyst" aria-pressed="false">Analyst</button>
+        </div>
+        <a href="#how">How it works</a>
+        <a href="#model">About this model</a>
+      </nav>
+    </header>
+
+    <main class="game">
+      <section class="stage" aria-label="Replay">
+        <div class="stage-head">
+          <p class="round"><span id="round-tag">Round 1 of 3</span> · <span id="scoreline">67:00</span></p>
+          <h1 class="ask">What would you do?</h1>
+          <p class="task">Create a better chance in the next 8 seconds.</p>
+        </div>
+        <div class="pitch-wrap">
+          <canvas id="pitch" aria-label="Top-down pitch. Harbour City attack to the right." role="img"></canvas>
+          <p class="badge">Synthetic scenario</p>
+          <p class="variant-tag" id="variant-tag" hidden></p>
+        </div>
+        <div class="stage-foot">
+          <p id="t-rel">Decision moment · t = 0.0 s</p>
+          <p class="legend"><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-def"></i>Key defender</span></p>
+        </div>
+      </section>
+      <aside class="side">
+        <p class="scene-kicker" id="scene-title">Loading</p>
+        <p class="scene-brief" id="scene-brief">Loading the first play.</p>
+        <div id="panel" aria-live="polite"><div class="card"><p>Loading the validated play bundle…</p></div></div>
+      </aside>
+    </main>
+
+    <section class="how" id="how">
+      <h2>How it works</h2>
+      <ol class="how-steps">
+        <li><b>Decide.</b> Each play freezes at one decision. You pick a pass or a shot.</li>
+        <li><b>See your branch.</b> Your choice plays first: ball, receiver and the key defender move under a fixed, public rule set.</li>
+        <li><b>Compare.</b> Switch to the recorded action or another option, all from the same moment and the same 8-second window.</li>
+        <li><b>Change one condition.</b> In play one, move one defender into the passing lane and watch the numbers and the explanation follow.</li>
+      </ol>
+    </section>
+
+    <section class="model" id="model">
+      <h2>About this model</h2>
+      <div class="model-grid">
         <div>
-          <p class="lead" data-rise style="--i: 0">Calder has the ball outside the box.</p>
-          <div class="toolbar" data-rise style="--i: 1">
-            <button class="action" id="play" type="button" data-en="Play the move" data-zh="播放这一脚">Play the move</button>
-            <div class="modes" role="group" aria-label="Caption">
-              <button type="button" data-mode="casual" aria-pressed="true">Casual</button>
-              <button type="button" data-mode="analyst" aria-pressed="false">Analyst</button>
-              <button type="button" data-mode="zh" aria-pressed="false">中文</button>
-            </div>
-            <button class="ghost-button" type="button" data-open-trace data-en="Agent trace" data-zh="代理记录" aria-expanded="false" aria-controls="trace">Agent trace</button>
-          </div>
-          <div class="stage" id="stage" data-rise style="--i: 2">
-            <div class="pitch-wrap">
-              <canvas id="pitch" width="960" height="622" aria-label="Pitch replay"></canvas>
-              <div id="chips"></div>
-            </div>
-            <div class="stage-foot">
-              <p id="clock">HFC 1–1 NVA</p>
-              <p class="legend" id="legend">
-                <span><i class="swatch" data-source="synthetic_tracking"></i>Synthetic tracking</span>
-                <span><i class="swatch" data-source="model_estimate"></i>Model estimate</span>
-              </p>
-            </div>
-            <p class="prompt" id="prompt" hidden>Guess the pass</p>
-            <div class="choices" id="choices" hidden></div>
-            <p class="verdict" id="verdict" hidden aria-live="polite"></p>
-          </div>
+          <h3>What the numbers mean</h3>
+          <dl class="defs-list">
+            <dt>Estimated pass completion</dt><dd>Internal estimate that the first pass reaches the intended team-mate. Shown as a percentage.</dd>
+            <dt>Estimated possession risk</dt><dd>Share of the outcome tree where the ball is lost before the window ends or the first shot.</dd>
+            <dt>Simulated shot quality</dt><dd>Synthetic 0–100 score at the moment of the shot. Not calibrated on real matches.</dd>
+            <dt>Opportunity quality</dt><dd>Probability-weighted shot quality of the first legal shot within 8 seconds, shown out of 100. It is not a chance of scoring.</dd>
+          </dl>
+          <p class="fine">Teams, players and positions are invented. Coefficients are transparent heuristics, not fitted to real data. Each animation is one representative simulated path; the numbers come from the outcome tree.</p>
         </div>
-        <aside class="hero-side">
-          <figure class="hero-photo">
-            <img class="drift" src="/media/kadriorg-stadium-floodlights-and-maakri-high-rises.jpg" alt="Floodlights over a stadium stand, with high-rises beyond the roof" width="1920" height="1350" />
-          </figure>
-        </aside>
-      </main>
-    </div>
-
-    <section class="how">
-      <h2 data-rise>The other pitch</h2>
-      <p class="statement" data-rise style="--i: 1">Two trails are not the ball he played.</p>
-      <p class="support" data-rise style="--i: 2">A pass and a shot, drawn beside the tracking. The pitch keeps the one that left his foot.</p>
-      <figure class="frame wide" data-rise style="--i: 3">
-        <img src="/media/outdoor-grass-football-pitch-geograph-org-uk.jpg" alt="An outdoor grass pitch with a goal at the far end" width="1920" height="1440" />
-      </figure>
-    </section>
-
-    <section class="futures">
-      <h2>Three actions</h2>
-      <article data-slot="shot"><h3>Strike it</h3></article>
-      <article data-slot="taken"><h3>Wide to Okonkwo</h3></article>
-      <article data-slot="pass"><h3>Inside to Quinn</h3></article>
-    </section>
-
-    <section class="plate">
-      <figure>
-        <div class="frame">
-          <img src="/media/goal-net-feb-21-2026.jpg" alt="A goal net filling the frame" width="1920" height="1440" />
+        <div>
+          <h3>How the play was made</h3>
+          <p class="fine">Producer generation, run before publishing: a Microsoft Agent Framework workflow (Moment Director → Replay Analyst → Fan Editor → QA, with a conditional revise loop) calls this project's MCP server over stdio for snapshots, legal actions, branch simulations and evidence. Code does the arithmetic; QA checks every number's subject, metric, unit and window. The site serves the validated, immutable result.</p>
+          <div id="hood-run" class="hood"></div>
         </div>
-        <figcaption>The net belongs to another ground. Harbour City does not.</figcaption>
-      </figure>
+      </div>
+      <div class="model-grid">
+        <div>
+          <h3>Held-out input</h3>
+          <p class="fine">A fourth snapshot with new legal parameters and no hand-written explanation, run through the same pipeline.</p>
+          <div id="hood-heldout" class="hood"></div>
+        </div>
+        <div>
+          <h3>Validation test</h3>
+          <p class="fine">Normal runs are not forced to fail. This button loads a labelled diagnostic run in which one claim was given the wrong subject on purpose.</p>
+          <button class="btn ghost" type="button" data-act="diag">Run validation test</button>
+          <div id="hood-diag" class="hood"></div>
+        </div>
+      </div>
+      <p class="fine foot">Engine <span id="engine"></span>. Fictional data. Built for the Microsoft × Premier League Inside the Game hackathon. Source: <a href="https://github.com/er-s-an/other-pitch">github.com/er-s-an/other-pitch</a>.</p>
     </section>
-
-    <section class="split">
-      <div class="copy">
-        <h2>Tracking, then a model</h2>
-        <p>The solid trail is the minute as it was generated. The dashed trails are the actions he did not take. The numbers on them are estimates.</p>
-      </div>
-      <div class="frame">
-        <img src="/media/kwu-tung-grass-pitch-201708.jpg" alt="A grass football pitch seen from one corner, with trees along the far side" width="1920" height="1280" />
-      </div>
-    </section>
-
-    <section class="check">
-      <h2>Sent back</h2>
-      <p id="reject-line">QA checks every figure against the cited evidence.</p>
-      <button class="ghost-button" type="button" data-open-trace data-en="Read the trace" data-zh="阅读记录" aria-expanded="false" aria-controls="trace">Read the trace</button>
-      <figure class="frame wide">
-        <img src="/media/grass-football-pitch-forrester-sports-centre-geograph.jpg" alt="A grass pitch beside a low sports building" width="1920" height="1440" />
-      </figure>
-    </section>
-
-    <footer class="close">
-      <div>
-        <button class="replay" id="replay" type="button" data-en="Replay" data-zh="重放">Replay</button>
-        <p id="note">Fictional clubs, players and events. Tracking is synthetic.</p>
-        <ul class="credits">
-          <li><a href="https://commons.wikimedia.org/wiki/File:Kadriorg_Stadium_floodlights_and_Maakri_high-rises.jpg">Kadriorg Stadium floodlights and Maakri high-rises</a> by Sancos, CC BY 4.0.</li>
-          <li><a href="https://commons.wikimedia.org/wiki/File:Outdoor_grass_football_pitch_-_geograph.org.uk_-_3084961.jpg">Outdoor grass football pitch</a> by Ross Watson, CC BY-SA 2.0.</li>
-          <li><a href="https://commons.wikimedia.org/wiki/File:Goal_net_(Feb_21,_2026).jpg">Goal net (Feb 21, 2026)</a> by 茅野ふたば, CC BY-SA 4.0.</li>
-          <li><a href="https://commons.wikimedia.org/wiki/File:Kwu_Tung_Grass_Pitch_201708.jpg">Kwu Tung Grass Pitch 201708</a> by Wpcpey, CC BY 4.0.</li>
-          <li><a href="https://commons.wikimedia.org/wiki/File:Grass_football_pitch,_Forrester_Sports_Centre_-_geograph.org.uk_-_8137439.jpg">Grass football pitch, Forrester Sports Centre</a> by Richard Webb, CC BY-SA 2.0.</li>
-        </ul>
-      </div>
-      <div class="mark-slot">
-        <p class="wordmark">Other Pitch</p>
-      </div>
-    </footer>
-
-    <dialog id="trace" aria-labelledby="trace-title">
-      <div class="trace-head">
-        <h2 id="trace-title">Agent trace</h2>
-        <button class="close-trace" id="close-trace" type="button" data-en="Close" data-zh="关闭">Close</button>
-      </div>
-      <div class="trace-list" id="trace-list"></div>
-    </dialog>
-
+    <p class="toast" id="toast" role="status" hidden></p>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,517 +1,186 @@
-import type { Frame, FramePlayer, Ghost, XY } from "./types";
+import type { Frame, PlayerInfo, XY } from "./types";
 
-const LENGTH = 105;
-const WIDTH = 68;
-const GOAL_Y = 34;
-const GOAL_HALF = 3.66;
+const L = 105, W = 68, GY = 34, GH = 3.66;
+const LINE = "rgba(240, 236, 224, 0.82)";
+export const YOU = "#F5C542";      // your choice: solid amber
+export const OTHER = "#8FD3E8";    // other option / recorded: dashed ice blue
+const HOME = "#2BB3C0", HOME_INK = "#04181b", AWAY = "#F2EEE3", AWAY_INK = "#1a1c18";
 
-/** Chalk for synthetic tracking. Teal for a model estimate. Matches the page tokens. */
-const TRACK = "#f4efe4";
-const ESTIMATE = "#146073";
-const NIGHT = "#08110e";
-const STRIPE_A = "#12392c";
-const STRIPE_B = "#0e3026";
+export interface Layout { s: number; ox: number; oy: number; w: number; h: number }
 
-export interface Layout {
-  scale: number;
-  ox: number;
-  oy: number;
-  cssWidth: number;
-  cssHeight: number;
+export const VIEW_X0 = 33; // show the attacking two-thirds; every scenario plays out here
+export function layoutOf(w: number, h: number): Layout {
+  const pad = Math.max(8, Math.min(22, w * 0.02));
+  const span = L - VIEW_X0 + 4;
+  const s = Math.min((w - pad * 2) / span, (h - pad * 2) / W);
+  return { s, ox: w - pad - (L + 2) * s, oy: (h - W * s) / 2, w, h };
+}
+const px = (l: Layout, x: number, y: number) => [l.ox + x * l.s, l.oy + y * l.s] as const;
+
+export function framesAt(frames: Frame[], t: number): Frame {
+  if (!frames.length) throw new Error("no frames");
+  if (t <= frames[0].t) return frames[0];
+  const last = frames[frames.length - 1];
+  if (t >= last.t) return last;
+  let i = 0;
+  while (i < frames.length - 1 && frames[i + 1].t < t) i++;
+  const a = frames[i], b = frames[i + 1], u = (t - a.t) / (b.t - a.t || 1);
+  const lerp = (p: XY, q: XY): XY => [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u];
+  const p: Record<string, XY> = {};
+  for (const id in a.p) p[id] = lerp(a.p[id], b.p[id] ?? a.p[id]);
+  return { t, ball: lerp(a.ball, b.ball), p };
 }
 
-export interface Marker {
-  id: string;
-  at: XY;
-  hot: boolean;
-}
-
-export function easeOutCubic(t: number): number {
-  const u = Math.min(1, Math.max(0, t));
-  return 1 - (1 - u) ** 3;
-}
-
-/** Stagger each ghost so the trails draw on one after another, then meet at the end. */
-export function ghostProgress(progress: number, index: number, count: number): number {
-  if (progress >= 1) return 1;
-  const lead = count > 1 ? index * 0.1 : 0;
-  const u = (Math.min(1, Math.max(0, progress)) - lead) / (1 - lead);
-  return easeOutCubic(Math.min(1, Math.max(0, u)));
-}
-
-export function layoutOf(cssWidth: number, cssHeight: number): Layout {
-  const padX = 34;
-  const padY = 22;
-  const scale = Math.min(
-    Math.max(1, cssWidth - padX * 2) / LENGTH,
-    Math.max(1, cssHeight - padY * 2) / WIDTH,
-  );
-  const pw = LENGTH * scale;
-  const ph = WIDTH * scale;
-  return {
-    scale,
-    ox: (cssWidth - pw) / 2,
-    oy: (cssHeight - ph) / 2,
-    cssWidth,
-    cssHeight,
-  };
-}
-
-export function toPixel(layout: Layout, x: number, y: number): { px: number; py: number } {
-  return { px: layout.ox + x * layout.scale, py: layout.oy + y * layout.scale };
-}
-
-export function along(ghost: Ghost, progress: number): XY {
-  const points = ghost.points;
-  const last = points[points.length - 1];
-  if (!last) return { x: 0, y: 0 };
-  if (progress >= 1) return { x: last.x, y: last.y };
-  const scaled = Math.max(0, progress) * (points.length - 1);
-  const index = Math.floor(scaled);
-  const next = points[Math.min(index + 1, points.length - 1)];
-  const current = points[index];
-  const u = scaled - index;
-  return {
-    x: current.x + (next.x - current.x) * u,
-    y: current.y + (next.y - current.y) * u,
-  };
-}
-
-function sourceColor(source: string): string {
-  return source === "model_estimate" ? ESTIMATE : TRACK;
-}
-
-let grain: HTMLCanvasElement | null = null;
-
-function grassGrain(): HTMLCanvasElement {
-  if (grain) return grain;
-  const tile = document.createElement("canvas");
-  tile.width = 128;
-  tile.height = 128;
-  const g = tile.getContext("2d");
-  if (!g) return tile;
-  const image = g.createImageData(128, 128);
-  let seed = 0x1f7a8c;
-  const next = () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
-  for (let i = 0; i < image.data.length; i += 4) {
-    const v = 70 + next() * 90;
-    image.data[i] = v;
-    image.data[i + 1] = v + 8;
-    image.data[i + 2] = v - 6;
-    image.data[i + 3] = next() < 0.42 ? 36 : 0;
+function field(ctx: CanvasRenderingContext2D, l: Layout) {
+  ctx.fillStyle = "#0b1a14";
+  ctx.fillRect(0, 0, l.w, l.h);
+  const bands = 14;
+  for (let i = 0; i < bands; i++) {
+    ctx.fillStyle = i % 2 ? "#123a2b" : "#15402f";
+    ctx.fillRect(l.ox + (L * l.s * i) / bands, l.oy, (L * l.s) / bands + 0.5, W * l.s);
   }
-  g.putImageData(image, 0, 0);
-  grain = tile;
-  return tile;
-}
-
-function pitchRect(ctx: CanvasRenderingContext2D, layout: Layout): void {
-  ctx.beginPath();
-  ctx.rect(layout.ox, layout.oy, LENGTH * layout.scale, WIDTH * layout.scale);
-}
-
-function stripes(ctx: CanvasRenderingContext2D, layout: Layout): void {
-  const bands = 16;
+  const g = ctx.createRadialGradient(l.ox + L * l.s * 0.7, l.oy + W * l.s * 0.45, 10, l.ox + L * l.s * 0.6, l.oy + W * l.s * 0.5, L * l.s * 0.8);
+  g.addColorStop(0, "rgba(255,250,225,0.10)");
+  g.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = g;
+  ctx.fillRect(l.ox, l.oy, L * l.s, W * l.s);
   ctx.save();
-  pitchRect(ctx, layout);
-  ctx.clip();
-  for (let i = 0; i < bands; i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? STRIPE_A : STRIPE_B;
-    const x = layout.ox + (LENGTH * layout.scale * i) / bands;
-    const w = LENGTH * layout.scale / bands + 0.6;
-    ctx.fillRect(x, layout.oy, w, WIDTH * layout.scale);
-  }
-  const pattern = ctx.createPattern(grassGrain(), "repeat");
-  if (pattern) {
-    ctx.globalAlpha = 0.2;
-    ctx.fillStyle = pattern;
-    ctx.fillRect(layout.ox, layout.oy, LENGTH * layout.scale, WIDTH * layout.scale);
-  }
-  ctx.restore();
-}
-
-function floodlight(ctx: CanvasRenderingContext2D, layout: Layout): void {
-  const cx = layout.ox + LENGTH * layout.scale * 0.5;
-  const cy = layout.oy + WIDTH * layout.scale * 0.42;
-  const radius = Math.max(LENGTH, WIDTH) * layout.scale * 0.72;
-  const pool = ctx.createRadialGradient(cx, cy, radius * 0.08, cx, cy, radius);
-  pool.addColorStop(0, "rgba(236, 232, 214, 0.16)");
-  pool.addColorStop(0.42, "rgba(190, 206, 176, 0.05)");
-  pool.addColorStop(1, "rgba(0, 0, 0, 0)");
-  ctx.save();
-  pitchRect(ctx, layout);
-  ctx.clip();
-  ctx.fillStyle = pool;
-  ctx.fillRect(layout.ox, layout.oy, LENGTH * layout.scale, WIDTH * layout.scale);
-  ctx.restore();
-}
-
-function vignette(ctx: CanvasRenderingContext2D, layout: Layout): void {
-  const cx = layout.ox + (LENGTH * layout.scale) / 2;
-  const cy = layout.oy + (WIDTH * layout.scale) / 2;
-  const radius = Math.hypot(LENGTH * layout.scale, WIDTH * layout.scale) * 0.55;
-  const shade = ctx.createRadialGradient(cx, cy, radius * 0.45, cx, cy, radius);
-  shade.addColorStop(0, "rgba(5, 10, 8, 0)");
-  shade.addColorStop(0.7, "rgba(5, 10, 8, 0.06)");
-  shade.addColorStop(1, "rgba(5, 10, 8, 0.58)");
-  ctx.fillStyle = shade;
-  ctx.fillRect(0, 0, layout.cssWidth, layout.cssHeight);
-}
-
-function markings(ctx: CanvasRenderingContext2D, layout: Layout, color: string, width: number, shift: number): void {
-  const arc = Math.acos(5.5 / 9.15);
-  const boxW = 16.5;
-  const boxH = 40.32;
-  const sixW = 5.5;
-  const sixH = 18.32;
-  const boxY = GOAL_Y - boxH / 2;
-  const sixY = GOAL_Y - sixH / 2;
-  ctx.save();
-  ctx.translate(layout.ox + shift, layout.oy + shift);
-  ctx.scale(layout.scale, layout.scale);
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineJoin = "miter";
-  ctx.lineCap = "butt";
-  ctx.lineWidth = width / layout.scale;
-  ctx.strokeRect(0, 0, LENGTH, WIDTH);
-  ctx.beginPath();
-  ctx.moveTo(LENGTH / 2, 0);
-  ctx.lineTo(LENGTH / 2, WIDTH);
-  ctx.moveTo(LENGTH / 2 + 9.15, GOAL_Y);
-  ctx.arc(LENGTH / 2, GOAL_Y, 9.15, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.strokeRect(0, boxY, boxW, boxH);
-  ctx.strokeRect(LENGTH - boxW, boxY, boxW, boxH);
-  ctx.strokeRect(0, sixY, sixW, sixH);
-  ctx.strokeRect(LENGTH - sixW, sixY, sixW, sixH);
-  ctx.beginPath();
-  ctx.arc(11, GOAL_Y, 9.15, -arc, arc);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(LENGTH - 11, GOAL_Y, 9.15, Math.PI - arc, Math.PI + arc);
-  ctx.stroke();
-  for (const [x, y] of [[0, 0], [LENGTH, 0], [LENGTH, WIDTH], [0, WIDTH]] as const) {
+  ctx.translate(l.ox, l.oy);
+  ctx.scale(l.s, l.s);
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.6 / l.s;
+  ctx.strokeRect(0, 0, L, W);
+  ctx.beginPath(); ctx.moveTo(L / 2, 0); ctx.lineTo(L / 2, W); ctx.stroke();
+  ctx.beginPath(); ctx.arc(L / 2, GY, 9.15, 0, Math.PI * 2); ctx.stroke();
+  for (const side of [0, 1]) {
+    const x0 = side ? L - 16.5 : 0, x1 = side ? L - 5.5 : 0;
+    ctx.strokeRect(x0, GY - 20.16, 16.5, 40.32);
+    ctx.strokeRect(x1, GY - 9.16, 5.5, 18.32);
+    const a = Math.acos(5.5 / 9.15);
     ctx.beginPath();
-    ctx.arc(x, y, 1, 0, Math.PI * 2);
+    if (side) ctx.arc(L - 11, GY, 9.15, Math.PI - a, Math.PI + a); else ctx.arc(11, GY, 9.15, -a, a);
     ctx.stroke();
-  }
-  ctx.lineWidth = (width + 0.4) / layout.scale;
-  ctx.beginPath();
-  ctx.moveTo(0, GOAL_Y - GOAL_HALF);
-  ctx.lineTo(-1.6, GOAL_Y - GOAL_HALF);
-  ctx.lineTo(-1.6, GOAL_Y + GOAL_HALF);
-  ctx.lineTo(0, GOAL_Y + GOAL_HALF);
-  ctx.moveTo(LENGTH, GOAL_Y - GOAL_HALF);
-  ctx.lineTo(LENGTH + 1.6, GOAL_Y - GOAL_HALF);
-  ctx.lineTo(LENGTH + 1.6, GOAL_Y + GOAL_HALF);
-  ctx.lineTo(LENGTH, GOAL_Y + GOAL_HALF);
-  ctx.stroke();
-  for (const x of [11, LENGTH / 2, LENGTH - 11]) {
-    ctx.beginPath();
-    ctx.arc(x, GOAL_Y, 0.28, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(side ? L - 11 : 11, GY, 0.3, 0, Math.PI * 2); ctx.fillStyle = LINE; ctx.fill();
+    const gx = side ? L : 0, d = side ? 1.8 : -1.8;
+    ctx.lineWidth = 2.4 / l.s;
+    ctx.beginPath(); ctx.moveTo(gx, GY - GH); ctx.lineTo(gx + d, GY - GH); ctx.lineTo(gx + d, GY + GH); ctx.lineTo(gx, GY + GH); ctx.stroke();
+    ctx.lineWidth = 1.6 / l.s;
   }
   ctx.restore();
+  // attack direction cue
+  const [ax, ay] = px(l, L - 30, 3.2);
+  ctx.fillStyle = "rgba(240,236,224,0.55)";
+  ctx.font = `600 ${Math.max(10, l.s * 1.35)}px "Public Sans", sans-serif`;
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText("ATTACKING  \u2192", ax, ay);
 }
 
-function net(ctx: CanvasRenderingContext2D, layout: Layout, side: 1 | -1): void {
-  const depth = 2.35;
-  const mouth = GOAL_HALF;
-  const goalX = side === 1 ? LENGTH : 0;
-  ctx.save();
-  ctx.translate(layout.ox, layout.oy);
-  ctx.scale(layout.scale, layout.scale);
-  ctx.strokeStyle = "rgba(244, 239, 228, 0.34)";
-  ctx.lineWidth = 0.85 / layout.scale;
-  ctx.beginPath();
-  const back = goalX + side * depth;
-  const topIn = GOAL_Y - mouth + 0.35;
-  const botIn = GOAL_Y + mouth - 0.35;
-  ctx.moveTo(goalX, GOAL_Y - mouth);
-  ctx.lineTo(back, topIn);
-  ctx.lineTo(back, botIn);
-  ctx.lineTo(goalX, GOAL_Y + mouth);
-  for (let i = 1; i <= 4; i += 1) {
-    const y = GOAL_Y - mouth + (mouth * 2 * i) / 5;
-    const y2 = topIn + ((botIn - topIn) * i) / 5;
-    ctx.moveTo(goalX, y);
-    ctx.lineTo(back, y2);
+export interface Route { points: XY[]; color: string; dashed: boolean; label: string; progress?: number }
+export interface Highlight { id: string; label: string; ghostFrom?: XY }
+
+export interface DrawInput {
+  frame: Frame; players: PlayerInfo[]; carrierId: string; routes: Route[]; targets?: Array<{ id: string; at: XY; label: string; hot: boolean; below?: boolean }>;
+  highlights: Highlight[]; laneBand?: { from: XY; to: XY } | null; zones?: Array<{ at: XY; r: number }>; caption?: string;
+}
+
+function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, at: XY, ring: string | null) {
+  const [x, y] = px(l, at[0], at[1]);
+  const r = Math.max(7.5, l.s * 1.05);
+  ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r, r * 0.35, 0, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = info.team === "home" ? HOME : AWAY; ctx.fill();
+  ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
+  if (info.team === "away") { // away: square notch so teams differ by shape, not only colour
+    ctx.fillStyle = "#c9463d"; ctx.fillRect(x - r * 0.55, y - r - 1, r * 1.1, r * 0.42);
   }
-  for (let i = 1; i <= 3; i += 1) {
-    const x = goalX + side * ((depth * i) / 4);
-    const t = i / 4;
-    ctx.moveTo(x, GOAL_Y - mouth + 0.35 * t);
-    ctx.lineTo(x, GOAL_Y + mouth - 0.35 * t);
-  }
-  ctx.stroke();
-  ctx.restore();
+  if (ring) { ctx.beginPath(); ctx.arc(x, y, r + 4.5, 0, Math.PI * 2); ctx.strokeStyle = ring; ctx.lineWidth = 2.4; ctx.stroke(); }
+  ctx.fillStyle = info.team === "home" ? HOME_INK : AWAY_INK;
+  ctx.font = `700 ${Math.max(9, Math.round(r * 0.95))}px "Public Sans", sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(String(info.number), x, y + 0.5);
 }
 
-function strokePoly(ctx: CanvasRenderingContext2D, layout: Layout, points: XY[]): void {
-  ctx.beginPath();
-  points.forEach((point, index) => {
-    const { px, py } = toPixel(layout, point.x, point.y);
-    if (index === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  });
-  ctx.stroke();
+function tag(ctx: CanvasRenderingContext2D, l: Layout, at: XY, text: string, color: string, below = false) {
+  const [cx0, y0] = px(l, at[0], at[1]);
+  const fs = Math.max(10, Math.min(13, l.s * 1.45));
+  ctx.font = `600 ${fs}px "Public Sans", sans-serif`;
+  const w = ctx.measureText(text).width + 12, h = fs + 9;
+  const y = below ? y0 + l.s * 1.6 + 4 : y0 - l.s * 1.6 - h - 4;
+  let x = cx0 - w / 2;
+  x = Math.max(4, Math.min(l.w - w - 4, x));
+  ctx.fillStyle = "rgba(6,12,10,0.86)";
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill();
+  ctx.fillStyle = color; ctx.fillRect(x, y, 3, h);
+  ctx.fillStyle = "#F3F0E7"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText(text, x + 8, y + h / 2 + 0.5);
 }
 
-function traceUntil(points: Array<{ x: number; y: number }>, progress: number): XY[] {
-  if (points.length === 0) return [];
-  if (progress >= 1) return points.map((point) => ({ x: point.x, y: point.y }));
-  const scaled = Math.max(0, progress) * (points.length - 1);
-  const index = Math.min(points.length - 1, Math.floor(scaled));
-  const current = points[index];
-  const next = points[Math.min(index + 1, points.length - 1)];
-  const u = scaled - index;
-  const head = {
-    x: current.x + (next.x - current.x) * u,
-    y: current.y + (next.y - current.y) * u,
-  };
-  const out = points.slice(0, index + 1).map((point) => ({ x: point.x, y: point.y }));
-  const last = out[out.length - 1];
-  if (!last || last.x !== head.x || last.y !== head.y) out.push(head);
-  return out;
-}
-
-function ballTrail(ctx: CanvasRenderingContext2D, layout: Layout, points: XY[]): void {
-  if (points.length < 2) return;
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = TRACK;
-  ctx.globalAlpha = 0.16;
-  ctx.lineWidth = Math.max(6, layout.scale * 0.7);
-  strokePoly(ctx, layout, points);
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = Math.max(2.2, layout.scale * 0.26);
-  for (let i = 1; i < points.length; i += 1) {
-    const from = toPixel(layout, points[i - 1].x, points[i - 1].y);
-    const to = toPixel(layout, points[i].x, points[i].y);
-    ctx.beginPath();
-    ctx.moveTo(from.px, from.py);
-    ctx.lineTo(to.px, to.py);
-    ctx.globalAlpha = 0.18 + 0.78 * (i / (points.length - 1));
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function ghostPath(
-  ctx: CanvasRenderingContext2D,
-  layout: Layout,
-  ghost: Ghost,
-  progress: number,
-  motion: boolean,
-): void {
-  const points = traceUntil(ghost.points, progress);
-  if (points.length < 2) return;
-  const color = sourceColor(ghost.source);
-  ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.34;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 18;
-  ctx.lineWidth = 8;
-  strokePoly(ctx, layout, points);
-  ctx.shadowBlur = 0;
-  ctx.globalAlpha = ghost.source === "model_estimate" ? 0.95 : 0.9;
-  ctx.lineWidth = 2.3;
-  ctx.setLineDash(ghost.kind === "shot" ? [4, 7] : [10, 8]);
-  if (motion) ctx.lineDashOffset = -performance.now() / 42;
-  strokePoly(ctx, layout, points);
-  ctx.restore();
-}
-
-function playerDot(
-  ctx: CanvasRenderingContext2D,
-  layout: Layout,
-  player: FramePlayer,
-  color: string,
-  ink: string,
-  actor: boolean,
-): void {
-  const { px, py } = toPixel(layout, player.x, player.y);
-  const radius = Math.max(9, layout.scale * 1.15);
-  ctx.save();
-  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
-  ctx.beginPath();
-  ctx.ellipse(px, py + radius * 0.82, radius * 1.05, radius * 0.38, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(px, py, radius, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.fillStyle = color;
-  ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
-  ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-  ctx.fillRect(px - radius, py + radius * 0.15, radius * 2, radius);
-  ctx.restore();
-  if (actor) {
-    ctx.beginPath();
-    ctx.arc(px, py, radius + 5, 0, Math.PI * 2);
-    ctx.strokeStyle = TRACK;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.arc(px, py, radius, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(6, 10, 8, 0.55)";
-  ctx.lineWidth = 1.25;
-  ctx.stroke();
-  ctx.fillStyle = ink;
-  ctx.font = `600 ${Math.max(11, Math.round(radius * 0.95))}px "Public Sans", sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(String(player.number), px, py + 0.5);
-}
-
-function groundShadow(ctx: CanvasRenderingContext2D, px: number, py: number, rx: number, ry: number): void {
-  ctx.beginPath();
-  ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-  ctx.fill();
-}
-
-function ball(ctx: CanvasRenderingContext2D, layout: Layout, x: number, y: number): void {
-  const { px, py } = toPixel(layout, x, y);
-  const radius = Math.max(5.5, layout.scale * 0.72);
-  groundShadow(ctx, px + 1, py + radius * 0.85, radius * 0.95, radius * 0.36);
-  ctx.beginPath();
-  ctx.arc(px, py, radius, 0, Math.PI * 2);
-  ctx.fillStyle = TRACK;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(px - radius * 0.2, py, radius * 0.62, 0.4, 2.4);
-  ctx.moveTo(px + radius * 0.15, py - radius * 0.7);
-  ctx.lineTo(px + radius * 0.55, py - radius * 0.15);
-  ctx.strokeStyle = "#1a1c18";
-  ctx.lineWidth = 1.15;
-  ctx.stroke();
-}
-
-function ghostBall(
-  ctx: CanvasRenderingContext2D,
-  layout: Layout,
-  x: number,
-  y: number,
-  color: string,
-  progress: number,
-  motion: boolean,
-): void {
-  const { px, py } = toPixel(layout, x, y);
-  const radius = Math.max(7, layout.scale * 0.92);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(px, py, radius, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.14;
-  ctx.fill();
-  ctx.globalAlpha = 0.95;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.7;
-  ctx.setLineDash([3.2, 3.4]);
-  ctx.lineDashOffset = motion ? -progress * 28 - performance.now() / 70 : 0;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 10;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function markerRing(ctx: CanvasRenderingContext2D, layout: Layout, marker: Marker): void {
-  const { px, py } = toPixel(layout, marker.at.x, marker.at.y);
-  ctx.beginPath();
-  ctx.arc(px, py, marker.hot ? 16 : 12, 0, Math.PI * 2);
-  ctx.strokeStyle = marker.hot ? ESTIMATE : TRACK;
-  ctx.lineWidth = marker.hot ? 2.6 : 1.7;
-  ctx.stroke();
-  if (marker.hot) {
-    ctx.beginPath();
-    ctx.arc(px, py, 3.2, 0, Math.PI * 2);
-    ctx.fillStyle = ESTIMATE;
-    ctx.fill();
-  }
-}
-
-export function draw(canvas: HTMLCanvasElement, input: {
-  frame: Frame;
-  trail: XY[];
-  ghosts: Ghost[];
-  progress: number;
-  markers: Marker[];
-  home: string;
-  away: string;
-  actorId: string;
-  showGhosts: boolean;
-  motion: boolean;
-}): Layout {
-  const cssWidth = canvas.clientWidth;
-  const cssHeight = canvas.clientHeight;
+export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const width = Math.max(1, Math.round(cssWidth * dpr));
-  const height = Math.max(1, Math.round(cssHeight * dpr));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return layoutOf(cssWidth, cssHeight);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  const ctx = canvas.getContext("2d")!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cssWidth, cssHeight);
-  ctx.fillStyle = NIGHT;
-  ctx.fillRect(0, 0, cssWidth, cssHeight);
-  const layout = layoutOf(cssWidth, cssHeight);
-  stripes(ctx, layout);
-  floodlight(ctx, layout);
-  net(ctx, layout, -1);
-  net(ctx, layout, 1);
-  markings(ctx, layout, "rgba(4, 12, 8, 0.45)", 2.4, 1.15);
-  markings(ctx, layout, "rgba(244, 239, 228, 0.94)", 1.55, 0);
-  ballTrail(ctx, layout, input.trail);
-  if (input.showGhosts) {
-    input.ghosts.forEach((ghost, index) => {
-      const local = ghostProgress(input.progress, index, input.ghosts.length);
-      ghostPath(ctx, layout, ghost, local, input.motion);
-    });
+  const l = layoutOf(w, h);
+  field(ctx, l);
+  if (d.laneBand) {
+    const [x1, y1] = px(l, ...d.laneBand.from), [x2, y2] = px(l, ...d.laneBand.to);
+    ctx.save(); ctx.strokeStyle = "rgba(201,70,61,0.14)"; ctx.lineCap = "round"; ctx.lineWidth = l.s * 12;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
   }
-  for (const marker of input.markers) markerRing(ctx, layout, marker);
-  const players = [...input.frame.players].sort((a, b) => a.y - b.y);
-  for (const player of players) {
-    const home = player.team === "home";
-    playerDot(
-      ctx,
-      layout,
-      player,
-      home ? input.home : input.away,
-      home ? TRACK : "#141614",
-      player.id === input.actorId,
-    );
+  for (const z of d.zones ?? []) {
+    const [x, y] = px(l, ...z.at);
+    ctx.beginPath(); ctx.arc(x, y, z.r * l.s, 0, Math.PI * 2); ctx.fillStyle = "rgba(201,70,61,0.13)"; ctx.fill();
+    ctx.setLineDash([3, 4]); ctx.strokeStyle = "rgba(201,70,61,0.6)"; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
   }
-  if (input.showGhosts) {
-    input.ghosts.forEach((ghost, index) => {
-      const local = ghostProgress(input.progress, index, input.ghosts.length);
-      if (local <= 0.02) return;
-      const at = along(ghost, local);
-      ghostBall(ctx, layout, at.x, at.y, sourceColor(ghost.source), local, input.motion);
-    });
+  for (const r of d.routes) {
+    if (r.points.length < 2) continue;
+    ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = r.color; ctx.lineWidth = r.dashed ? 2.2 : 3.4; ctx.globalAlpha = r.dashed ? 0.85 : 1;
+    if (r.dashed) ctx.setLineDash([8, 7]);
+    ctx.beginPath();
+    r.points.forEach((p, i) => { const [x, y] = px(l, p[0], p[1]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke(); ctx.restore();
   }
-  ball(ctx, layout, input.frame.ball.x, input.frame.ball.y);
-  vignette(ctx, layout);
-  return layout;
+  for (const h of d.highlights) {
+    if (h.ghostFrom) {
+      const [gx, gy] = px(l, ...h.ghostFrom), now = d.frame.p[h.id];
+      ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = "rgba(242,238,227,0.6)"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(gx, gy, Math.max(7.5, l.s * 1.05), 0, Math.PI * 2); ctx.stroke();
+      if (now) { const [nx, ny] = px(l, ...now); ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(nx, ny); ctx.stroke(); }
+      ctx.restore();
+    }
+  }
+  for (const t of d.targets ?? []) {
+    const [x, y] = px(l, ...t.at);
+    ctx.beginPath(); ctx.arc(x, y, t.hot ? 15 : 12, 0, Math.PI * 2);
+    ctx.strokeStyle = t.hot ? YOU : "rgba(245,197,66,0.75)"; ctx.lineWidth = t.hot ? 3 : 1.8; ctx.setLineDash(t.hot ? [] : [4, 4]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = YOU; ctx.fill();
+  }
+  const ringFor = new Map(d.highlights.map((h) => [h.id, "#E8574C"]));
+  ringFor.set(d.carrierId, "#F3F0E7");
+  for (const info of d.players) {
+    const at = d.frame.p[info.id];
+    if (at) playerDisc(ctx, l, info, at, ringFor.get(info.id) ?? null);
+  }
+  // ball
+  const [bx, by] = px(l, ...d.frame.ball), br = Math.max(4.5, l.s * 0.62);
+  ctx.beginPath(); ctx.arc(bx, by, br + 2.5, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fill();
+  ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = "#FFFFFF"; ctx.fill();
+  ctx.lineWidth = 1.4; ctx.strokeStyle = "#0b0c0a"; ctx.stroke();
+  for (const h of d.highlights) { const at = d.frame.p[h.id]; if (at && h.label) tag(ctx, l, at, h.label, "#E8574C", true); }
+  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) tag(ctx, l, end, r.label, r.color); }
+  for (const t of d.targets ?? []) tag(ctx, l, t.at, t.label, YOU, t.below);
+  if (d.caption) {
+    ctx.font = `600 ${Math.max(10, l.s * 1.3)}px "Public Sans", sans-serif`;
+    ctx.fillStyle = "rgba(240,236,224,0.8)"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    const [cx, cy] = px(l, VIEW_X0 + 1.5, 3.2); ctx.fillText(d.caption, cx, cy);
+  }
 }
 
-export function hitMarker(layout: Layout, markers: Marker[], px: number, py: number): string | null {
-  let best: { id: string; dist: number } | null = null;
-  for (const marker of markers) {
-    const at = toPixel(layout, marker.at.x, marker.at.y);
-    const dist = Math.hypot(at.px - px, at.py - py);
-    if (dist < 36 && (!best || dist < best.dist)) best = { id: marker.id, dist };
-  }
-  return best ? best.id : null;
+export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
+  const l = layoutOf(canvas.clientWidth, canvas.clientHeight);
+  let best: string | null = null, bd = 26;
+  for (const t of targets) { const [x, y] = px(l, ...t.at); const d = Math.hypot(x - ex, y - ey); if (d < bd) { bd = d; best = t.id; } }
+  return best;
 }
