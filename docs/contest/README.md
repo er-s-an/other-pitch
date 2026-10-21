@@ -65,7 +65,8 @@ Suggested features: player ID tagging, pass quality/difficulty, ball/shot speed,
 
 ## Our constraints
 
-- **Never bind a credit card.** The Azure free trial needs a card, so it is not an option. Possible no-card routes: Azure for Students (unverified), GitHub Models free tier, or local Agent Framework plus our own MCP server on a free non-Azure host. Using only non-Azure services may cost the Foundry and Cloud Native categories.
+- **Never bind a credit card.** The Azure free trial needs a card, so it is not an option. Possible no-card routes: Azure for Students (unverified) or local Agent Framework plus our own MCP server on a free non-Azure host. Using only non-Azure services may cost the Foundry and Cloud Native categories.
+- **Correction (2026-10-21):** GitHub Models (playground, catalog and inference) was retired on 2026-07-30 and is no longer a usable route; see https://docs.github.com/en/github-models. The project no longer references it in code.
 - Everything in English (UI, video, repo). The Chinese mode is a feature, not burned-in video text.
 - Video under 2 minutes, no music with rights issues, fictional clubs only.
 - Public repo: github.com/er-s-an/other-pitch. Test link: https://other-pitch.vercel.app.

@@ -1,58 +1,53 @@
 # Other Pitch
 
-**Counterfactual football replay.** Other Pitch finds the key decision in a match. It replays that moment on an animated 2D pitch and shows ghost versions of the passes the player did not make, each labeled with a probability. Before the reveal, viewers play *Guess the pass*.
+**Your call. Another possibility.** Make the call in a football replay, watch your own branch, compare it with the alternative, then change one defensive condition and see why the value of the choice changes.
 
-> All teams, players, and matches are fictional and generated from a seed (Harbour City FC vs Northvale Athletic). This project uses no real Premier League clubs, logos, players, or data.
+Live: **https://other-pitch.vercel.app** · Product spec: [docs/PRD.md](docs/PRD.md) · Data contract: [docs/v2-data-contract.md](docs/v2-data-contract.md)
 
-Built for the Microsoft × Premier League **Inside the Game** hackathon.
+All teams, players and positions are fictional. Every number is a transparent, synthetic model estimate. None of them is a calibrated goal probability.
 
-## Architecture
+## What you can do
 
-```mermaid
-flowchart LR
-  G[Seeded generator<br/>events + 25 Hz tracking] --> I[Ingest]
-  I --> A[Analyst<br/>pass EV, shot xG, decision score]
-  A --> D[Director<br/>key moment + 2 untaken alternatives]
-  D --> Q{QA<br/>every claim vs event evidence}
-  Q -- reject + reasons --> A
-  Q -- pass --> O[Overlay<br/>timeline JSON]
-  O --> P[Personalize<br/>casual / analyst / 中文]
-  P --> B[(web/public/data/*.json)]
-  B --> W[Web replay<br/>Vite + Canvas, ghost passes, Guess the pass]
-  B --> M[MCP server stdio<br/>match state / events / moment / alternatives / timeline]
-  L[LLM provider<br/>deterministic · GitHub Models · Azure AI Foundry] -.-> D
-  L -.-> P
+1. **Decide.** Three structurally different plays freeze at a decision. Pick a pass or a shot.
+2. **See your branch.** Your choice plays first. Ball, receiver and key defender move under one public rule set.
+3. **Compare.** Switch between Your choice, the Recorded action (a synthetic record, not a correct answer) and Another option, all from the same moment.
+4. **Change one condition.** In play 1, move Okada into the passing lane. Completion for the through ball drops from 82% to 29% and opportunity quality from 39 to 14 / 100. The strongest route does not change, and the page says so.
+5. **Recap and challenge.** See your three calls and send a challenge link. Your friend's view hides your pick until they choose.
+
+Casual and Analyst views use the same metrics. Analyst adds the outcome tree, inputs, definitions, evidence IDs and lane overlays. "About this model" shows the real workflow trace and MCP calls, the held-out input, and a labelled validation test.
+
+## How it is built
+
+```
+scenarios.py (3 plays + 1 held-out) ─► simulation.py: frozen snapshot → per-action 2D motion + analytic outcome tree
+                                         ▲ MCP stdio server: get_decision_snapshot · list_legal_actions · simulate_branch · get_evidence
+Microsoft Agent Framework workflow ──────┘ (called through mcp.ClientSession)
+  Moment Director → Replay Analyst → Fan Editor → QA ─(reject ≤2)→ Fan Editor
+                                                    └(pass)→ Publisher → immutable bundles in web/public/data/v2
+Vite + TypeScript + Canvas site reads the validated bundles (labelled "precomputed, loaded from cache").
 ```
 
-The agents are executors in a **Microsoft Agent Framework** workflow (`otherpitch/workflow.py`, `agents.py`). Each handoff is a typed envelope with `evidence_ids`. The run is written to `trace.json`. In the seeded run, QA rejects the Director's first draft once (an unsupported number) and accepts the second attempt.
+- **Metrics** (`otherpitch/v2/evidence.py`): estimated pass completion, estimated possession risk, simulated shot quality, and opportunity quality V. V is the probability-weighted quality of the first legal shot within 8 s, with no-shot paths counting 0. Coefficients are reused from `otherpitch/analytics.py` and are heuristic, not fitted.
+- **Typed QA** (`otherpitch/v2/qa.py`): every displayed number is a claim bound to one evidence record (scene, variant, action, metric, unit, window, version). Wrong subject, borrowed metric, wrong unit or format, unbound numbers and "goal probability" wording are rejected. Normal runs pass on the first try. `--fault-injection` produces a labelled diagnostic.
+- **Explainer**: pluggable (`OTHERPITCH_LLM=deterministic|foundry|openai_compatible`) with a deterministic fallback. The published bundles used the deterministic template; no hosted model was called. GitHub Models is not used; it was retired on 2026-07-30.
+- **Jev (TypeSafe)**: optional interface stub, disabled by default, not integrated (`otherpitch/v2/jev.py`).
 
-## Sponsor tech
-
-| Tech | Use |
-|---|---|
-| Microsoft Agent Framework (`agent-framework`) | Workflow graph for the 6 agents, with a QA reject loop and a retry budget |
-| Model Context Protocol (`mcp` FastMCP) | `python -m otherpitch.mcp_server --data web/public/data` exposes `get_match_state`, `list_events`, `get_moment`, `get_alternatives`, `get_timeline` |
-| GitHub Models (free, no card) | `OTHERPITCH_LLM=github GITHUB_TOKEN=...` rewrites captions; QA still checks every number |
-| Azure AI Foundry | `OTHERPITCH_LLM=foundry` plus `AZURE_AI_FOUNDRY_ENDPOINT`, `AZURE_AI_FOUNDRY_API_KEY`, `AZURE_AI_FOUNDRY_MODEL` (optional `AZURE_AI_FOUNDRY_API_VERSION`) (OpenAI-compatible chat endpoint). Documented only; this project does not need a paid account, and no card is bound |
-| Deterministic fallback | Default. No network. Any LLM error falls back to the templates |
-
-## Run
+## Run it
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-python -m pytest -q                                   # tests
-python -m otherpitch.build --seed 7 --out web/public/data/ [--no-llm]
-python -m otherpitch.mcp_server --data web/public/data # MCP over stdio
-cd web && npm install && npm run dev                  # replay at localhost:5173
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest -q                                   # engine, QA, MCP, workflow tests
+.venv/bin/python -m otherpitch.v2.build --out web/public/data/v2 --fault-injection   # producer generation
+.venv/bin/python -m otherpitch.v2.mcp_server                    # MCP server over stdio, for any MCP client
+cd web && npm install && npm run dev                            # site
 ```
 
-Deploy: `vercel` from the repo root (see `vercel.json`).
+Deploy: `cd web && npm run build`, then `vercel build --prod` / `vercel deploy --prebuilt --prod` from the repo root.
 
-## Credits
+## Limits
 
-Inspired by the NBA *Inside the Game* broadcast work and *Broadcast Code 12*. All of this project's code and data are original.
+Synthetic plays only; ground passes and shots only; no full offside engine (plays are checked for an onside receiver at t0); the 8 s window is a design choice; one representative animation per action; one condition change (play 1). The v1 pipeline (`otherpitch/*.py` outside `v2/`) is kept for history and is no longer used by the site.
 
-## License
+## Licence
 
-See `LICENSE`.
+See [LICENSE](LICENSE).
