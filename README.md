@@ -6,7 +6,20 @@ Live: **https://other-pitch.vercel.app** · Product spec: [docs/PRD.md](docs/PRD
 
 All teams, players and positions are fictional. Every number is a transparent, synthetic model estimate. None of them is a calibrated goal probability.
 
-## What you can do
+## Sandbox (main mode): everything computed live
+
+Open **Sandbox** in the top bar, or press **Edit this play** after any play. The browser runs a TypeScript port of the Python engine (`web/src/engine/`), so every change is computed live. Nothing is pre-baked.
+
+- Drag any attacker, defender or the ball carrier (mouse or touch). Use **Give ball**, **+ Defender**, **+ Attacker** and **Remove**.
+- Tune the model with sliders: defender speed, reaction delay, pass speed, receiver run speed, shooting range, and the pressure that stops a shot.
+- **Randomize legal setup** places an onside attack against 4–6 defenders and a goalkeeper.
+- On every change, the sandbox generates a ground pass to every onside team-mate plus a shot, and recomputes each one's outcome tree, completion, possession risk, shot quality and opportunity quality. It then redraws all branch paths and re-ranks the routes, showing deltas against the previous state.
+- Explanations are deterministic templates driven by the computed evidence. Client-side QA rejects any claim without a value computed for this exact state hash, and any number in free text.
+- **Copy link to this setup** encodes every position, run and parameter in the URL (`?sb=`).
+- Measured in headless Chrome on the box: `evaluate()` takes about 0.5 ms median and under 2 ms p95 for 4–5 candidates; evaluate plus panel plus canvas redraw takes about 2–3 ms median and under 9 ms max.
+- Parity: `cd web && npm test` runs the TypeScript engine against Python outputs for the 3 plays plus the held-out input (15 branches, 195 checks, 0 mismatches, max |diff| 0), plus the QA tests.
+
+## The three plays (tutorial)
 
 1. **Decide.** Three structurally different plays freeze at a decision. Pick a pass or a shot.
 2. **See your branch.** Your choice plays first. Ball, receiver and key defender move under one public rule set.
@@ -46,7 +59,7 @@ Deploy: `cd web && npm run build`, then `vercel build --prod` / `vercel deploy -
 
 ## Limits
 
-Synthetic plays only; ground passes and shots only; no full offside engine (plays are checked for an onside receiver at t0); the 8 s window is a design choice; one representative animation per action; one condition change (play 1). The v1 pipeline (`otherpitch/*.py` outside `v2/`) is kept for history and is no longer used by the site.
+Synthetic plays only; ground passes and shots only; sandbox runs (velocities) can be edited only by loading a play or randomizing, not by dragging arrows; no full offside engine (plays are checked for an onside receiver at t0); the 8 s window is a design choice; one representative animation per action; one condition change (play 1). The v1 pipeline (`otherpitch/*.py` outside `v2/`) is kept for history and is no longer used by the site.
 
 ## Licence
 

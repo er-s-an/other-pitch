@@ -8,6 +8,15 @@ Supersedes [PRD v0.1](PRD-v1.md). The full Chinese planning document is [PLAN-v2
 
 v1's core flaw was that the user's choice did not change what played. In v2 the choice decides which simulated branch plays first.
 
+## 1b. v2.1 change: Sandbox as the main mode (2026-10-21)
+
+User feedback: "Only three rounds; it must allow arbitrary changes and still really compute." Response:
+
+- The analytic engine (pass completion, possession risk, shot quality, V, outcome tree, branch trajectories) is ported to TypeScript and runs in the browser. A parity test against Python covers the 3 plays plus the held-out input with exact agreement.
+- **Sandbox**: drag any player or the carrier, add or remove defenders and attackers, give the ball, change six model parameters, randomize a legal setup. Every change auto-generates candidates (a pass to each onside team-mate plus a shot), recomputes them all (under 50 ms budget; measured about 2–3 ms including redraw), re-ranks them, and shows deltas against the previous state.
+- Explanations for arbitrary states use the deterministic template explainer. Client-side QA enforces "no claim without a computed value": evidence is keyed by state hash, action and metric; display formats are checked; free text may not contain numbers.
+- The 3 curated plays remain as the tutorial. Any play can be opened in the Sandbox ("Edit this play"). Setups are shareable via an encoded URL.
+
 ## 2. User and moment
 
 - **Primary user:** a fan who wants to join the discussion and understand a little more football. Half-time, a pause, post-match sharing, or a second screen.
