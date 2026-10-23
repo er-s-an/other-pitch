@@ -74,11 +74,13 @@ function busy(on: boolean, msg = "Loading… the last picture stays up.") {
   if (on) n.textContent = msg;
 }
 function pitchStatus(show: boolean, text: string, retry: boolean) {
-  const box = $("#pitch-status");
-  if (!box) return;
+  const box = document.querySelector<HTMLElement>("#pitch-status");
+  const label = document.querySelector("#pitch-status-text");
+  const btn = document.querySelector<HTMLElement>("#pitch-retry");
+  if (!box || !label || !btn) return;
   box.hidden = !show;
-  $("#pitch-status-text").textContent = text;
-  $("#pitch-retry").hidden = !retry;
+  if (show && text) label.textContent = text;
+  btn.hidden = !retry;
 }
 
 // ---------------- rendering ----------------
@@ -158,6 +160,8 @@ function play(frames: Frame[], from: number, to: number, done: () => void) {
 function setPhase(p: Phase) {
   state.phase = p;
   document.body.dataset.phase = p;
+  const cta = document.querySelector<HTMLElement>("#stage-cta");
+  if (cta) cta.hidden = !(p === "intro" || p === "leadin");
   renderPanel();
   render();
 }
@@ -197,7 +201,13 @@ function resultCard(): string {
     }).join("") + `</dl>`;
     html += `<p class="fine">${esc(e.casual.uncertainty)} Synthetic scenario.</p>`;
   } else {
-    html += `<table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Shot quality</th><th>Opportunity</th></tr></thead><tbody>`;
+    html += `<dl class="metrics metrics-dense">` + [
+      metricRow("Opportunity quality", score(br.metrics.opportunity_value), "Weighted shot quality in the next 8 s. Not a goal probability."),
+      metricRow("Estimated completion", pct(br.metrics.p_complete), "Chance the first pass reaches the team-mate."),
+      metricRow("Possession risk", pct(br.metrics.p_lose_possession), "Share of the tree where the ball is lost first."),
+      metricRow("Shot quality", score(br.metrics.q_shot), "Synthetic quality at the moment of the first shot."),
+    ].join("") + `</dl>`;
+    html += `<table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Risk</th><th>Shot q</th><th>Opp.</th></tr></thead><tbody>`;
     for (const x of b.branches) {
       html += `<tr class="${x.action_id === id ? "on" : ""}"><td>${esc(x.label)}<small>${esc(roleOf(x.action_id))}</small></td><td>${pct(x.metrics.p_complete)}</td><td>${pct(x.metrics.p_lose_possession)}</td><td>${score(x.metrics.q_shot)}</td><td><b>${score(x.metrics.opportunity_value)}</b></td></tr>`;
     }
@@ -389,7 +399,8 @@ async function beginRound() {
 }
 
 function startLeadin() {
-  const b = state.bundle!;
+  const b = state.bundle;
+  if (!b) return;
   setPhase("leadin");
   play(state.frames, b.leadin.frames[0].t, 0, () => setPhase("decide"));
 }
@@ -551,6 +562,7 @@ function setApp(app: "tutorial" | "sandbox") {
 }
 
 async function retryLoad() {
+  pitchStatus(true, "Loading the play…", false);
   if (!state.catalog) {
     try {
       state.catalog = await getJSON<Catalog>("scenes.json");

@@ -35,7 +35,7 @@
         </div>
         <div class="pitch-wrap">
           <canvas id="pitch" aria-label="Top-down pitch. Harbour City attack to the right." role="img"></canvas>
-          <div class="pitch-status" id="pitch-status">
+          <div class="pitch-status" id="pitch-status" role="status">
             <p id="pitch-status-text">Loading the first play…</p>
             <button class="btn" type="button" data-act="retry" id="pitch-retry" hidden>Retry</button>
           </div>
@@ -44,7 +44,7 @@
         </div>
         <div class="stage-foot">
           <p id="t-rel">Decision moment · t = 0.0 s</p>
-          <p class="legend"><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-carrier"></i>Carrier</span><span><i class="k-tgt"></i>Receiver</span><span><i class="k-def"></i>Key defender</span></p>
+          <p class="legend"><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-carrier"></i>Carrier</span><span><i class="k-tgt"></i>Receiver</span><span><i class="k-def"></i>Key defender</span><span><i class="k-ball"></i>Ball</span><span><i class="k-off"></i>Offside line</span></p>
         </div>
         <div class="stage-cta" id="stage-cta">
           <button class="btn primary" type="button" data-act="start">Start the play</button>
@@ -86,11 +86,12 @@
         </div>
         <p class="tool-hint" id="sb-tool-hint">Drag a player. Rankings recompute on every move.</p>
         <div class="hint" id="sb-hint" hidden>
-          <p><b>Edit this play.</b> Drag anyone on the pitch. Every pass and shot is recomputed in your browser. Give the ball, add a player, or remove one with the tools.</p>
+          <p><b>First edit.</b> Drag anyone on the pitch — rankings update live in your browser. Use the tools to give the ball, add a player, or remove one.</p>
           <button class="btn ghost" type="button" data-sbact="dismiss-hint">Got it</button>
         </div>
         <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p><p class="live-pip" id="sb-live" aria-live="polite"></p></div>
         <p class="fine" id="sb-perf"></p>
+        <p class="legend sb-legend"><span><i class="k-ball"></i>Ball</span><span><i class="k-carrier"></i>Carrier</span><span><i class="k-you"></i>Selected</span><span><i class="k-other"></i>Other branch</span><span><i class="k-off"></i>Offside line</span><span><i class="k-def"></i>Key defender</span></p>
         <p class="fine">Arrows show each attacker's current run. The dotted vertical line is the offside line (second-last defender); receivers beyond it are not offered. Faint dashed lines are every candidate branch; the solid one is selected.</p>
       </section>
       <aside class="side sb-side">

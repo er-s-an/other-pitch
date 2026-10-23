@@ -65,10 +65,14 @@ let liveT = 0;
 let liveAnnounced = 0;
 function markLive() {
   const wrap = document.querySelector(".sb-wrap");
+  const pip = document.querySelector("#sb-live");
   wrap?.classList.add("is-live");
   clearTimeout(liveT);
-  if (sb.drag) return;
-  const pip = document.querySelector("#sb-live");
+  if (sb.drag) {
+    if (pip) pip.textContent = "Updating…";
+    pip?.classList.add("on");
+    return;
+  }
   if (pip && performance.now() - liveAnnounced > 450) {
     pip.textContent = "Rankings updated";
     liveAnnounced = performance.now();
@@ -154,8 +158,8 @@ function render() {
 function hit(ex: number, ey: number, pointerType = "mouse"): string | null {
   const [x, y] = toPitch(canvas(), ex, ey);
   const coarse = pointerType === "touch" || pointerType === "pen" || window.matchMedia("(pointer: coarse)").matches;
-  const pxHit = coarse ? 30 : 22;
-  const rad = Math.max(coarse ? 3.2 : 2.3, pxHit / Math.max(1, pxPerMetre(canvas())));
+  const pxHit = coarse ? 44 : 22;
+  const rad = Math.max(coarse ? 3.8 : 2.3, pxHit / Math.max(1, pxPerMetre(canvas())));
   let best: string | null = null, bd = rad;
   for (const p of sb.snap!.players) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.id; } }
   const c = sb.snap!.players.find((p) => p.id === sb.snap!.carrier_id);
@@ -172,6 +176,7 @@ function onDown(e: PointerEvent) {
   const inside = x >= VIEW_X0 && x <= 105 && y >= 0 && y <= 68;
   if (sb.tool === "add-def" || sb.tool === "add-att") {
     if (!inside) return;
+    dismissHint();
     const team = sb.tool === "add-def" ? "away" : "home";
     const used = new Set(sb.snap.players.filter((p) => p.team === team).map((p) => p.number));
     let n = 2; while (used.has(n)) n++;
@@ -184,14 +189,17 @@ function onDown(e: PointerEvent) {
   const p = sb.snap.players.find((q) => q.id === id)!;
   if (sb.tool === "remove") {
     if (id === sb.snap.carrier_id) { flash("The ball carrier cannot be removed. Give the ball to someone else first."); return; }
+    dismissHint();
     commit(); sb.snap.players = sb.snap.players.filter((q) => q.id !== id); recompute(); return;
   }
   if (sb.tool === "ball") {
     if (p.team !== "home" || p.role === "GK") { flash("Only an attacking outfield player can have the ball."); return; }
+    dismissHint();
     commit(); sb.snap.carrier_id = id; recompute(true); return;
   }
   try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
   document.body.classList.add("sb-dragging");
+  document.querySelector("#sb-explain")?.setAttribute("aria-live", "off");
   dismissHint();
   sb.drag = { id, moved: false, start: [p.x, p.y], base: sb.ev };
 }
@@ -204,11 +212,20 @@ function onMove(e: PointerEvent) {
   const p = sb.snap.players.find((q) => q.id === sb.drag!.id)!;
   p.x = clamp(x, VIEW_X0 + 0.5, 104.5); p.y = clamp(y, 0.5, 67.5);
   sb.drag.moved = true;
-  if (!sb.dirty) { sb.dirty = true; requestAnimationFrame(() => { sb.dirty = false; sb.prev = sb.drag?.base ?? sb.prev; recompute(); }); }
+  if (!sb.dirty) {
+    sb.dirty = true;
+    requestAnimationFrame(() => {
+      sb.dirty = false;
+      if (!sb.drag) return;
+      sb.prev = sb.drag.base ?? sb.prev;
+      recompute();
+    });
+  }
 }
 
 function onUp() {
   document.body.classList.remove("sb-dragging");
+  document.querySelector("#sb-explain")?.setAttribute("aria-live", "polite");
   if (!sb.drag) return;
   const d = sb.drag; sb.drag = null;
   if (d.moved) { sb.prev = d.base; recompute(); } else render();
@@ -267,11 +284,14 @@ function renderPanel() {
     const b = ev.branches[sb.selected];
     const ok = ex.qa.length === 0;
     const claims = ex.claims.filter((c) => c.action_id === sb.selected && (analyst || c.metric === "opportunity_value"));
-    $("#sb-explain").innerHTML = ok ? `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
-      <dl class="claims">${claims.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
-      <details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
+    const details = `<details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
       <p class="fine">${ex.claims.map((c) => `<code>${esc(c.evidence_id)}</code>`).join(" ")}</p></details>
-      <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>
+      <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>`;
+    const fine = `<p class="fine">One simulated reading of this state. Analyst shows the outcome tree and the timings.</p>`;
+    $("#sb-explain").innerHTML = ok
+      ? `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
+      <dl class="claims">${claims.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
+      ${analyst ? details : fine}
       <button class="btn ghost" type="button" data-sbact="play">Play this branch</button>`
       : `<p class="warn">Explanation withheld: QA failed (${esc(ex.qa.join("; "))}).</p>`;
   }
@@ -327,11 +347,17 @@ function syncHint() {
   const n = $("#sb-hint");
   if (n) n.hidden = seen;
 }
+let toolFlashT = 0;
 function syncTool() {
   const cv = canvas();
   cv.dataset.tool = sb.tool;
   const hint = $("#sb-tool-hint");
-  if (hint) hint.textContent = TOOL_HINT[sb.tool];
+  if (hint) {
+    hint.textContent = TOOL_HINT[sb.tool];
+    hint.classList.add("flash");
+    clearTimeout(toolFlashT);
+    toolFlashT = window.setTimeout(() => hint.classList.remove("flash"), 420);
+  }
   document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String((x as HTMLElement).dataset.tool === sb.tool)));
 }
 

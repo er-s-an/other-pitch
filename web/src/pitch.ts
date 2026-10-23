@@ -137,8 +137,8 @@ function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, 
   const fs = Math.max(11, Math.round(r * 0.98));
   ctx.font = `700 ${fs}px "Public Sans", sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = info.team === "home" ? "rgba(255,255,255,0.55)" : "rgba(11,26,20,0.35)";
+  ctx.lineWidth = 3.6;
+  ctx.strokeStyle = info.team === "home" ? "rgba(255,255,255,0.7)" : "rgba(11,26,20,0.55)";
   ctx.strokeText(num, x, y + 0.5);
   ctx.fillStyle = info.team === "home" ? HOME_INK : AWAY_INK;
   ctx.fillText(num, x, y + 0.5);
@@ -155,10 +155,12 @@ function overlapArea(a: Box, b: Box) {
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, br: number) {
-  ctx.beginPath(); ctx.ellipse(x, y + br * 0.95, br * 0.95, br * 0.36, 0, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fill();
-  ctx.beginPath(); ctx.arc(x, y, br + 2.2, 0, Math.PI * 2); ctx.fillStyle = "#14120c"; ctx.fill();
-  ctx.beginPath(); ctx.arc(x, y, br, 0, Math.PI * 2); ctx.fillStyle = "#f4f1e6"; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y + br * 0.95, br * 1.05, br * 0.4, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fill();
+  // Soft halo so the ball stays readable on both grass stripes and dark shadows.
+  ctx.beginPath(); ctx.arc(x, y, br + 3.4, 0, Math.PI * 2); ctx.fillStyle = "rgba(245,197,66,0.22)"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, br + 2.4, 0, Math.PI * 2); ctx.fillStyle = "#0d120e"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, br, 0, Math.PI * 2); ctx.fillStyle = "#f7f4ea"; ctx.fill();
   ctx.save();
   ctx.beginPath(); ctx.arc(x, y, br - 0.4, 0, Math.PI * 2); ctx.clip();
   ctx.fillStyle = "#161814";
@@ -261,9 +263,9 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     ctx.setLineDash([8, 5]);
     ctx.lineCap = "butt";
     ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1);
-    ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 4; ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0.65)"; ctx.lineWidth = 4.5; ctx.stroke();
     ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1);
-    ctx.strokeStyle = "rgba(243,240,231,0.95)"; ctx.lineWidth = 1.7; ctx.stroke();
+    ctx.strokeStyle = "rgba(243,240,231,0.98)"; ctx.lineWidth = 1.9; ctx.stroke();
     ctx.restore();
   }
   for (const a of d.arrows ?? []) {
@@ -287,7 +289,7 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     playerDisc(ctx, l, info, at, rings);
   }
   const solid = [...d.routes].reverse().find((r) => !r.dashed && r.points.length > 4);
-  const br = Math.max(5.6, l.s * 0.78);
+  const br = Math.max(6.0, l.s * 0.82);
   let ballAt = d.frame.ball;
   const carrierAt = d.frame.p[d.carrierId];
   if (carrierAt && Math.hypot(ballAt[0] - carrierAt[0], ballAt[1] - carrierAt[1]) < 1.4) {
@@ -338,13 +340,13 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   }
   for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) paintTag(ctx, l, occupied, end, r.label, r.color, end[1] < 18); }
   for (const t of d.targets ?? []) if (t.label) paintTag(ctx, l, occupied, t.at, t.label, YOU, t.below ?? t.at[1] < 18);
-  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 20], "Offside", "#f3f0e7", true);
+  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 20], "Offside line", "#f3f0e7", true);
 }
 
 export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
   const l = layoutOf(canvas.clientWidth, canvas.clientHeight);
   const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
-  let best: string | null = null, bd = coarse ? 32 : 26;
+  let best: string | null = null, bd = coarse ? 44 : 28;
   for (const t of targets) { const [x, y] = px(l, ...t.at); const d = Math.hypot(x - ex, y - ey); if (d < bd) { bd = d; best = t.id; } }
   return best;
 }
