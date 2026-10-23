@@ -201,6 +201,19 @@ function resultCard(): string {
     }).join("") + `</dl>`;
     html += `<p class="fine">${esc(e.casual.uncertainty)} Synthetic scenario.</p>`;
   } else {
+    const ranked = [...b.branches].sort((a, c) => c.metrics.opportunity_value - a.metrics.opportunity_value);
+    const rank = Math.max(1, ranked.findIndex((x) => x.action_id === id) + 1);
+    const rec = b.branches.find((x) => x.action_id === b.recorded_action_id);
+    let versus = "";
+    if (rec && rec.action_id !== id) {
+      const dOpp = Math.round(br.metrics.opportunity_value * 100) - Math.round(rec.metrics.opportunity_value * 100);
+      const dComp = br.metrics.p_complete != null && rec.metrics.p_complete != null
+        ? Math.round(br.metrics.p_complete * 100) - Math.round(rec.metrics.p_complete * 100) : null;
+      const opp = dOpp === 0 ? "opportunity =" : `${dOpp > 0 ? "\u25B2" : "\u25BC"} ${Math.abs(dOpp)} opportunity`;
+      const comp = dComp == null ? "" : dComp === 0 ? " \u00b7 completion =" : ` \u00b7 ${dComp > 0 ? "\u25B2" : "\u25BC"} ${Math.abs(dComp)} completion`;
+      versus = ` \u00b7 vs recorded: ${opp}${comp}`;
+    } else if (rec) versus = " \u00b7 recorded action";
+    html += `<p class="rankline">Rank ${rank} of ${ranked.length}${versus}</p>`;
     html += `<dl class="metrics metrics-dense">` + [
       metricRow("Opportunity quality", score(br.metrics.opportunity_value), "Weighted shot quality in the next 8 s. Not a goal probability."),
       metricRow("Estimated completion", pct(br.metrics.p_complete), "Chance the first pass reaches the team-mate."),
@@ -352,7 +365,8 @@ async function loadScene(scene: string, variant: string, keepView = false) {
   } catch (e) {
     if (token !== state.token) return;
     state.error = `The validated bundle for this play did not load (${(e as Error).message}). The previous screen is kept.`;
-    if (!prev) setPhase("error"); else { state.bundle = prev; toast(state.error); }
+    if (!prev) setPhase("error");
+    else { state.bundle = prev; toast(state.error); render(); }
     return undefined;
   } finally {
     if (token === state.token) busy(false);
@@ -562,7 +576,9 @@ function setApp(app: "tutorial" | "sandbox") {
 }
 
 async function retryLoad() {
-  pitchStatus(true, "Loading the play…", false);
+  const keep = !!(state.bundle && state.frames.length);
+  if (!keep) pitchStatus(true, "Loading the play…", false);
+  else busy(true, "Loading the play… the last picture stays up.");
   if (!state.catalog) {
     try {
       state.catalog = await getJSON<Catalog>("scenes.json");

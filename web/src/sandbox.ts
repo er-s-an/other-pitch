@@ -62,23 +62,31 @@ export function randomize(seed = Date.now() >>> 0) {
 function commit() { sb.prev = sb.ev; }
 
 let liveT = 0;
-let liveAnnounced = 0;
 function markLive() {
-  const wrap = document.querySelector(".sb-wrap");
-  const pip = document.querySelector("#sb-live");
-  wrap?.classList.add("is-live");
+  const wrap = document.querySelector<HTMLElement>(".sb-wrap");
+  const pip = document.querySelector<HTMLElement>("#sb-live");
   clearTimeout(liveT);
-  if (sb.drag) {
-    if (pip) pip.textContent = "Updating…";
-    pip?.classList.add("on");
+  const dragging = !!sb.drag;
+  if (pip) {
+    pip.textContent = dragging ? "Updating…" : "Rankings updated";
+    pip.classList.add("on");
+  }
+  if (!wrap) return;
+  if (dragging) {
+    wrap.classList.add("is-live", "is-holding");
     return;
   }
-  if (pip && performance.now() - liveAnnounced > 450) {
-    pip.textContent = "Rankings updated";
-    liveAnnounced = performance.now();
+  const wasHolding = wrap.classList.contains("is-holding");
+  wrap.classList.remove("is-holding");
+  if (wasHolding || !wrap.classList.contains("is-live")) {
+    wrap.classList.remove("is-live");
+    void wrap.offsetWidth;
+    wrap.classList.add("is-live");
   }
-  pip?.classList.add("on");
-  liveT = window.setTimeout(() => { wrap?.classList.remove("is-live"); pip?.classList.remove("on"); }, 700);
+  liveT = window.setTimeout(() => {
+    wrap.classList.remove("is-live", "is-holding");
+    pip?.classList.remove("on");
+  }, 680);
 }
 
 function recompute(resetSel = false) {
@@ -199,8 +207,8 @@ function onDown(e: PointerEvent) {
   }
   try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
   document.body.classList.add("sb-dragging");
+  document.documentElement.classList.add("sb-dragging");
   document.querySelector("#sb-explain")?.setAttribute("aria-live", "off");
-  dismissHint();
   sb.drag = { id, moved: false, start: [p.x, p.y], base: sb.ev };
 }
 
@@ -211,6 +219,7 @@ function onMove(e: PointerEvent) {
   const [x, y] = toPitch(canvas(), e.clientX - r.left, e.clientY - r.top);
   const p = sb.snap.players.find((q) => q.id === sb.drag!.id)!;
   p.x = clamp(x, VIEW_X0 + 0.5, 104.5); p.y = clamp(y, 0.5, 67.5);
+  if (Math.hypot(p.x - sb.drag.start[0], p.y - sb.drag.start[1]) >= 0.4) dismissHint();
   sb.drag.moved = true;
   if (!sb.dirty) {
     sb.dirty = true;
@@ -225,6 +234,7 @@ function onMove(e: PointerEvent) {
 
 function onUp() {
   document.body.classList.remove("sb-dragging");
+  document.documentElement.classList.remove("sb-dragging");
   document.querySelector("#sb-explain")?.setAttribute("aria-live", "polite");
   if (!sb.drag) return;
   const d = sb.drag; sb.drag = null;
@@ -358,7 +368,11 @@ function syncTool() {
     clearTimeout(toolFlashT);
     toolFlashT = window.setTimeout(() => hint.classList.remove("flash"), 420);
   }
-  document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String((x as HTMLElement).dataset.tool === sb.tool)));
+  document.querySelectorAll<HTMLElement>("[data-tool]").forEach((x) => {
+    const tool = x.dataset.tool as Tool;
+    x.setAttribute("aria-pressed", String(tool === sb.tool));
+    if (TOOL_HINT[tool]) x.title = TOOL_HINT[tool];
+  });
 }
 
 export function initSandbox() {
@@ -369,7 +383,11 @@ export function initSandbox() {
   cv.addEventListener("pointerup", onUp);
   cv.addEventListener("pointercancel", onUp);
   cv.addEventListener("lostpointercapture", onUp);
+  cv.addEventListener("touchstart", (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
   cv.addEventListener("touchmove", (e) => { if (sb.drag && e.cancelable) e.preventDefault(); }, { passive: false });
+  window.addEventListener("touchmove", (e) => { if (document.body.classList.contains("sb-dragging") && e.cancelable) e.preventDefault(); }, { passive: false });
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
   new ResizeObserver(() => render()).observe(cv);
   syncTool();
   syncSliders();

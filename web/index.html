@@ -78,14 +78,14 @@
             </select></label>
         </div>
         <div class="seg tools" role="group" aria-label="Edit tool">
-          <button type="button" data-tool="move" aria-pressed="true" title="Drag a player. Rankings recompute as you move.">Drag</button>
-          <button type="button" data-tool="ball" aria-pressed="false" title="Tap an attacker to give them the ball.">Give ball</button>
-          <button type="button" data-tool="add-def" aria-pressed="false" title="Tap the pitch to add a defender.">+ Defender</button>
-          <button type="button" data-tool="add-att" aria-pressed="false" title="Tap the pitch to add an attacker.">+ Attacker</button>
-          <button type="button" data-tool="remove" aria-pressed="false" title="Tap a player to remove them.">Remove</button>
+          <button type="button" data-tool="move" aria-pressed="true" title="Drag a player. Rankings recompute on every move.">Drag</button>
+          <button type="button" data-tool="ball" aria-pressed="false" title="Tap an attacker to give them the ball. Rankings recompute immediately.">Give ball</button>
+          <button type="button" data-tool="add-def" aria-pressed="false" title="Tap open grass to add a defender.">+ Defender</button>
+          <button type="button" data-tool="add-att" aria-pressed="false" title="Tap open grass to add an attacker.">+ Attacker</button>
+          <button type="button" data-tool="remove" aria-pressed="false" title="Tap a player to remove them. Give the ball away before removing the carrier.">Remove</button>
         </div>
         <p class="tool-hint" id="sb-tool-hint">Drag a player. Rankings recompute on every move.</p>
-        <div class="hint" id="sb-hint" hidden>
+        <div class="hint" id="sb-hint">
           <p><b>First edit.</b> Drag anyone on the pitch — rankings update live in your browser. Use the tools to give the ball, add a player, or remove one.</p>
           <button class="btn ghost" type="button" data-sbact="dismiss-hint">Got it</button>
         </div>
