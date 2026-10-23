@@ -61,6 +61,22 @@ export function randomize(seed = Date.now() >>> 0) {
 
 function commit() { sb.prev = sb.ev; }
 
+let liveT = 0;
+let liveAnnounced = 0;
+function markLive() {
+  const wrap = document.querySelector(".sb-wrap");
+  wrap?.classList.add("is-live");
+  clearTimeout(liveT);
+  if (sb.drag) return;
+  const pip = document.querySelector("#sb-live");
+  if (pip && performance.now() - liveAnnounced > 450) {
+    pip.textContent = "Rankings updated";
+    liveAnnounced = performance.now();
+  }
+  pip?.classList.add("on");
+  liveT = window.setTimeout(() => { wrap?.classList.remove("is-live"); pip?.classList.remove("on"); }, 700);
+}
+
 function recompute(resetSel = false) {
   if (!sb.snap) return;
   const tStart = performance.now();
@@ -70,6 +86,7 @@ function recompute(resetSel = false) {
   if (resetSel || !sb.selected || !ev.branches[sb.selected]) sb.selected = ev.ranking[0] ?? null;
   sb.anim = null;
   renderPanel(); render();
+  markLive();
   sb.full.push(performance.now() - tStart); if (sb.full.length > 200) sb.full.shift();
 }
 
@@ -84,34 +101,45 @@ function staticFrame(): Frame {
 function render() {
   const s = sb.snap, ev = sb.ev;
   if (!s) return;
+  const analyst = document.body.dataset.mode === "analyst";
   let frame = staticFrame();
   if (sb.anim) frame = framesAt(sb.anim.frames, (performance.now() - sb.anim.start) / 1000);
   const routes: Route[] = [];
   const highlights: Highlight[] = [];
   let laneBand = null as null | { from: XY; to: XY };
+  let zones: Array<{ at: XY; r: number }> = [];
+  let targetIds: string[] = [];
+  const keys = analyst ? (s.key_defender_ids ?? []) : (s.key_defender_ids ?? []).slice(0, 1);
+  for (const id of keys) highlights.push({ id, label: id === keys[0] ? "Key" : "" });
   if (ev && !sb.anim) {
     const best = ev.ranking[0];
-    for (const id of [...ev.ranking].reverse()) {
-      const b = ev.branches[id];
-      const pts = b.frames.map((f) => f.ball);
-      const sel = id === sb.selected;
-      if (sel) continue;
-      routes.push({ points: pts, color: id === best ? YOU : OTHER, dashed: true, label: "", alpha: id === best ? 0.8 : 0.4, width: id === best ? 2.2 : 1.5 });
+    if (analyst) {
+      for (const id of [...ev.ranking].reverse()) {
+        if (id === sb.selected) continue;
+        const b = ev.branches[id];
+        routes.push({ points: b.frames.map((f) => f.ball), color: id === best ? YOU : OTHER, dashed: true, label: "", alpha: id === best ? 0.8 : 0.4, width: id === best ? 2.2 : 1.5 });
+      }
+    } else if (best && best !== sb.selected && ev.branches[best]) {
+      routes.push({ points: ev.branches[best].frames.map((f) => f.ball), color: YOU, dashed: true, label: "", alpha: 0.7, width: 2 });
     }
     if (sb.selected && ev.branches[sb.selected]) {
       const b = ev.branches[sb.selected], a = ev.actions.find((x) => x.action_id === sb.selected)!;
       routes.push({ points: b.frames.map((f) => f.ball), color: sb.selected === best ? YOU : OTHER, dashed: false, label: a.label, width: 3.6 });
       const blocker = b.inputs.blocking_defender_id as string | undefined;
-      if (blocker) highlights.push({ id: blocker, label: "" });
-      if (a.type === "pass") laneBand = { from: frame.ball, to: a.target };
+      if (blocker && !highlights.some((h) => h.id === blocker) && (analyst || keys.length === 0)) highlights.push({ id: blocker, label: analyst ? "" : "Key" });
+      if (a.receiver_id) targetIds = [a.receiver_id];
+      if (analyst && a.type === "pass") laneBand = { from: frame.ball, to: a.target };
+      if (analyst && blocker && frame.p[blocker]) zones = [{ at: frame.p[blocker], r: 6 }];
     }
   } else if (ev && sb.anim && sb.selected) {
     const b = ev.branches[sb.selected];
     const t = (performance.now() - sb.anim.start) / 1000;
     routes.push({ points: b.frames.filter((f) => f.t <= t).map((f) => f.ball), color: YOU, dashed: false, label: "One simulated possibility" });
+    const a = ev.actions.find((x) => x.action_id === sb.selected);
+    if (a?.receiver_id) targetIds = [a.receiver_id];
   }
   draw(canvas(), {
-    frame, players: s.players, carrierId: s.carrier_id, routes, highlights, laneBand,
+    frame, players: s.players, carrierId: s.carrier_id, routes, highlights, laneBand, zones, targetIds,
     arrows: sb.anim ? [] : s.players.filter((p) => p.team === "home").map((p) => ({ at: [p.x, p.y] as XY, v: [p.vx, p.vy] as XY })),
     selected: sb.drag?.id ?? null, offsideX: sb.anim ? null : offsideLine(s),
     caption: sb.anim ? `Decision + ${Math.min(8, (performance.now() - sb.anim.start) / 1000).toFixed(1)} s` : "Drag players · live recompute",
@@ -123,20 +151,23 @@ function render() {
   }
 }
 
-function hit(ex: number, ey: number): string | null {
+function hit(ex: number, ey: number, pointerType = "mouse"): string | null {
   const [x, y] = toPitch(canvas(), ex, ey);
-  const rad = Math.max(2.2, 26 / pxPerMetre(canvas()));
+  const coarse = pointerType === "touch" || pointerType === "pen" || window.matchMedia("(pointer: coarse)").matches;
+  const pxHit = coarse ? 30 : 22;
+  const rad = Math.max(coarse ? 3.2 : 2.3, pxHit / Math.max(1, pxPerMetre(canvas())));
   let best: string | null = null, bd = rad;
   for (const p of sb.snap!.players) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.id; } }
   const c = sb.snap!.players.find((p) => p.id === sb.snap!.carrier_id);
-  if (c && Math.hypot(c.x + 0.6 - x, c.y - y) < bd * 0.6) best = c.id;
+  if (c && Math.hypot(c.x + 0.6 - x, c.y - y) < bd * 0.7) best = c.id;
   return best;
 }
 
 function onDown(e: PointerEvent) {
   if (!sb.snap) return;
+  if (e.cancelable) e.preventDefault();
   const r = canvas().getBoundingClientRect(), ex = e.clientX - r.left, ey = e.clientY - r.top;
-  const id = hit(ex, ey);
+  const id = hit(ex, ey, e.pointerType);
   const [x, y] = toPitch(canvas(), ex, ey);
   const inside = x >= VIEW_X0 && x <= 105 && y >= 0 && y <= 68;
   if (sb.tool === "add-def" || sb.tool === "add-att") {
@@ -160,12 +191,13 @@ function onDown(e: PointerEvent) {
     commit(); sb.snap.carrier_id = id; recompute(true); return;
   }
   try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
+  document.body.classList.add("sb-dragging");
   sb.drag = { id, moved: false, start: [p.x, p.y], base: sb.ev };
-  e.preventDefault();
 }
 
 function onMove(e: PointerEvent) {
   if (!sb.drag || !sb.snap) return;
+  if (e.cancelable) e.preventDefault();
   const r = canvas().getBoundingClientRect();
   const [x, y] = toPitch(canvas(), e.clientX - r.left, e.clientY - r.top);
   const p = sb.snap.players.find((q) => q.id === sb.drag!.id)!;
@@ -175,6 +207,7 @@ function onMove(e: PointerEvent) {
 }
 
 function onUp() {
+  document.body.classList.remove("sb-dragging");
   if (!sb.drag) return;
   const d = sb.drag; sb.drag = null;
   if (d.moved) { sb.prev = d.base; recompute(); } else render();
@@ -195,11 +228,23 @@ function deltaChip(now: number | null, before: number | null | undefined, kind: 
 function p95() { const a = [...sb.timings].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * 0.95))] : 0; }
 
 function renderPanel() {
-  const ev = sb.ev, s = sb.snap!;
-  $("#sb-source").textContent = sb.source;
-  $("#sb-perf").innerHTML = ev ? `Recomputed <b>${ev.actions.length}</b> actions in <b>${ev.ms.toFixed(2)} ms</b> \u00b7 p95 ${p95().toFixed(2)} ms over ${sb.timings.length} updates \u00b7 state <code>${ev.state_hash}</code>` : "";
+  const ev = sb.ev, s = sb.snap;
+  $("#sb-source").textContent = sb.source || "Sandbox";
+  if (!s || !ev) {
+    $("#sb-perf").textContent = "Pick a starting play. Rankings appear after the first recompute.";
+    $("#sb-rank").innerHTML = `<p>Nothing ranked yet.</p>`;
+    $("#sb-explain").innerHTML = `<p>Drag a player once a play is loaded. Every move recomputes in the browser.</p>`;
+    return;
+  }
+  const analyst = document.body.dataset.mode === "analyst";
+  $("#sb-perf").innerHTML = `<span class="live-note">${ev.actions.length} actions recomputed.</span> <span class="tech"><b>${ev.ms.toFixed(2)} ms</b> \u00b7 p95 ${p95().toFixed(2)} ms over ${sb.timings.length} updates \u00b7 state <code>${esc(ev.state_hash)}</code></span>`;
   const list = $("#sb-rank");
-  if (!ev || ev.legality.length) { list.innerHTML = `<p class="warn">Not a legal state: ${esc(ev?.legality.join("; ") ?? "")}</p>`; $("#sb-explain").innerHTML = ""; return; }
+  if (ev.legality.length || !ev.ranking.length) {
+    const why = ev.legality.length ? `Not a legal state: ${ev.legality.join("; ")}` : "No legal action from this shape. Move a team-mate onside, or give the ball to an attacker.";
+    list.innerHTML = `<p class="warn">${esc(why)}</p>`;
+    $("#sb-explain").innerHTML = `<p>${esc(why)}</p>`;
+    return;
+  }
   const prev = sb.prev;
   list.innerHTML = ev.ranking.map((id, i) => {
     const b = ev.branches[id], a = ev.actions.find((x) => x.action_id === id)!;
@@ -220,8 +265,9 @@ function renderPanel() {
     const ex = explain(s, ev, sb.selected);
     const b = ev.branches[sb.selected];
     const ok = ex.qa.length === 0;
+    const claims = ex.claims.filter((c) => c.action_id === sb.selected && (analyst || c.metric === "opportunity_value"));
     $("#sb-explain").innerHTML = ok ? `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
-      <dl class="claims">${ex.claims.filter((c) => c.action_id === sb.selected).map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
+      <dl class="claims">${claims.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
       <details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
       <p class="fine">${ex.claims.map((c) => `<code>${esc(c.evidence_id)}</code>`).join(" ")}</p></details>
       <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>
@@ -261,13 +307,39 @@ export function decodeState(str: string): boolean {
 }
 
 // ---------------- wiring ----------------
+const TOOL_HINT: Record<Tool, string> = {
+  move: "Drag a player. Rankings recompute on every move.",
+  ball: "Tap an attacker to give them the ball. Rankings recompute immediately.",
+  "add-def": "Tap open grass to add a defender.",
+  "add-att": "Tap open grass to add an attacker.",
+  remove: "Tap a player to remove them. Give the ball away before removing the carrier.",
+};
+const HINT_KEY = "otherpitch.sandbox.hint";
+function syncHint() {
+  let seen = false;
+  try { seen = localStorage.getItem(HINT_KEY) === "1"; } catch { /* private mode: keep the hint */ }
+  const n = $("#sb-hint");
+  if (n) n.hidden = seen;
+}
+function syncTool() {
+  const cv = canvas();
+  cv.dataset.tool = sb.tool;
+  const hint = $("#sb-tool-hint");
+  if (hint) hint.textContent = TOOL_HINT[sb.tool];
+  document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String((x as HTMLElement).dataset.tool === sb.tool)));
+}
+
 export function initSandbox() {
   const cv = canvas();
-  cv.addEventListener("pointerdown", onDown);
-  cv.addEventListener("pointermove", onMove);
+  cv.style.touchAction = "none";
+  cv.addEventListener("pointerdown", onDown, { passive: false });
+  cv.addEventListener("pointermove", onMove, { passive: false });
   cv.addEventListener("pointerup", onUp);
   cv.addEventListener("pointercancel", onUp);
+  cv.addEventListener("lostpointercapture", onUp);
+  cv.addEventListener("touchmove", (e) => { if (sb.drag && e.cancelable) e.preventDefault(); }, { passive: false });
   new ResizeObserver(() => render()).observe(cv);
+  syncTool();
   syncSliders();
   $("#sb-params").addEventListener("pointerdown", () => commit());
   $("#sb-params").addEventListener("keydown", () => commit());
@@ -282,8 +354,12 @@ export function initSandbox() {
     const b = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
     if (!b) return;
     if (b.dataset.sel) { sb.selected = b.dataset.sel; renderPanel(); render(); }
-    if (b.dataset.tool) { sb.tool = b.dataset.tool as Tool; document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String((x as HTMLElement).dataset.tool === sb.tool))); cv.dataset.tool = sb.tool; }
+    if (b.dataset.tool) { sb.tool = b.dataset.tool as Tool; syncTool(); }
     switch (b.dataset.sbact) {
+      case "dismiss-hint":
+        try { localStorage.setItem(HINT_KEY, "1"); } catch { /* ignore */ }
+        $("#sb-hint").hidden = true;
+        break;
       case "random": randomize(); break;
       case "reset-params": commit(); sb.params = { ...DEFAULT_PARAMS }; syncSliders(); recompute(); break;
       case "play": if (sb.selected && sb.ev) { sb.anim = { frames: sb.ev.branches[sb.selected].frames, start: performance.now() }; cancelAnimationFrame(sb.raf); render(); } break;
@@ -298,7 +374,7 @@ export function initSandbox() {
   $<HTMLSelectElement>("#sb-scene").addEventListener("change", (e) => { const [id, v] = (e.target as HTMLSelectElement).value.split(":"); commit(); loadScene(id, v); });
 }
 
-export function showSandbox() { render(); renderPanel(); }
+export function showSandbox() { syncHint(); syncTool(); render(); renderPanel(); }
 export function hasState() { return !!sb.snap; }
 export const sandboxState = sb;
 export function sbRecompute() { recompute(true); }

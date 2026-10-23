@@ -8,13 +8,13 @@
     <title>Other Pitch · Your call. Another possibility.</title>
     <link rel="icon" href="/favicon.svg" />
   </head>
-  <body data-phase="intro">
+  <body data-phase="intro" data-mode="casual" data-app="tutorial">
     <header class="top">
       <a class="brand" href="/" aria-label="Other Pitch home"><span>Other</span><span>Pitch</span></a>
       <nav class="topnav">
         <div class="seg app-seg" role="group" aria-label="Mode">
           <button type="button" data-app="tutorial" aria-pressed="true">3 plays</button>
-          <button type="button" data-app="sandbox" aria-pressed="false">Sandbox</button>
+          <button type="button" data-app="sandbox" aria-pressed="false" aria-label="Sandbox, edit this play">Sandbox <em class="cue"><span class="cue-long">Edit this play</span><span class="cue-short">Edit</span></em></button>
         </div>
         <div class="seg" role="group" aria-label="View">
           <button type="button" data-mode="casual" aria-pressed="true">Casual</button>
@@ -34,18 +34,28 @@
         </div>
         <div class="pitch-wrap">
           <canvas id="pitch" aria-label="Top-down pitch. Harbour City attack to the right." role="img"></canvas>
+          <div class="pitch-status" id="pitch-status">
+            <p id="pitch-status-text">Loading the first play…</p>
+            <button class="btn" type="button" data-act="retry" id="pitch-retry" hidden>Retry</button>
+          </div>
           <p class="badge">Synthetic scenario</p>
           <p class="variant-tag" id="variant-tag" hidden></p>
         </div>
         <div class="stage-foot">
           <p id="t-rel">Decision moment · t = 0.0 s</p>
-          <p class="legend"><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-def"></i>Key defender</span></p>
+          <p class="legend"><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-carrier"></i>Carrier</span><span><i class="k-tgt"></i>Receiver</span><span><i class="k-def"></i>Key defender</span></p>
+        </div>
+        <div class="stage-cta" id="stage-cta">
+          <button class="btn primary" type="button" data-act="start">Start the play</button>
+          <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
+          <button class="btn ghost" type="button" data-act="edit">Edit this play</button>
         </div>
       </section>
       <aside class="side">
-        <p class="scene-kicker" id="scene-title">Loading</p>
-        <p class="scene-brief" id="scene-brief">Loading the first play.</p>
-        <div id="panel" aria-live="polite"><div class="card"><p>Loading the validated play bundle…</p></div></div>
+        <p class="busy" id="busy" role="status" hidden>Loading… the last picture stays up.</p>
+        <p class="scene-kicker" id="scene-title">Loading the play</p>
+        <p class="scene-brief" id="scene-brief">Fetching the validated bundle. This is not a live agent run.</p>
+        <div id="panel" aria-live="polite"><div class="card"><h3>Loading the play</h3><p>Fetching the validated bundle. If this stays empty, use Retry.</p></div></div>
       </aside>
     </main>
 
@@ -72,7 +82,12 @@
           <button type="button" data-tool="add-att" aria-pressed="false">+ Attacker</button>
           <button type="button" data-tool="remove" aria-pressed="false">Remove</button>
         </div>
-        <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p></div>
+        <p class="tool-hint" id="sb-tool-hint">Drag a player. Rankings recompute on every move.</p>
+        <div class="hint" id="sb-hint" hidden>
+          <p><b>Edit this play.</b> Drag anyone on the pitch. Every pass and shot is recomputed in your browser. Give the ball, add a player, or remove one with the tools.</p>
+          <button class="btn ghost" type="button" data-sbact="dismiss-hint">Got it</button>
+        </div>
+        <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p><p class="live-pip" id="sb-live" aria-live="polite"></p></div>
         <p class="fine" id="sb-perf"></p>
         <p class="fine">Arrows show each attacker's current run. The dotted vertical line is the offside line (second-last defender); receivers beyond it are not offered. Faint dashed lines are every candidate branch; the solid one is selected.</p>
       </section>
@@ -83,7 +98,7 @@
           <button class="btn ghost" type="button" data-sbact="share">Copy link to this setup</button>
         </div>
         <div class="card"><p class="kicker">Ranking by opportunity quality</p>
-          <div class="rank-head"><span></span><span>Action</span><span>Opportunity</span><span>Completion</span><span>Risk</span></div>
+          <div class="rank-head"><span></span><span>Action</span><span>Opportunity</span><span class="c">Completion</span><span class="k">Risk</span></div>
           <div id="sb-rank"></div>
           <p class="fine">Deltas compare with the state before your last change.</p>
         </div>
@@ -119,20 +134,20 @@
         <div>
           <h3>How the play was made</h3>
           <p class="fine">Producer generation, run before publishing: a Microsoft Agent Framework workflow (Moment Director → Replay Analyst → Fan Editor → QA, with a conditional revise loop) calls this project's MCP server over stdio for snapshots, legal actions, branch simulations and evidence. Code does the arithmetic; QA checks every number's subject, metric, unit and window. The site serves the validated, immutable result.</p>
-          <div id="hood-run" class="hood"></div>
+          <div id="hood-run" class="hood"><p>Loading the run record…</p></div>
         </div>
       </div>
       <div class="model-grid">
         <div>
           <h3>Held-out input</h3>
           <p class="fine">A fourth snapshot with new legal parameters and no hand-written explanation, run through the same pipeline.</p>
-          <div id="hood-heldout" class="hood"></div>
+          <div id="hood-heldout" class="hood"><p>Loading the held-out input…</p></div>
         </div>
         <div>
           <h3>Validation test</h3>
           <p class="fine">Normal runs are not forced to fail. This button loads a labelled diagnostic run in which one claim was given the wrong subject on purpose.</p>
           <button class="btn ghost" type="button" data-act="diag">Run validation test</button>
-          <div id="hood-diag" class="hood"></div>
+          <div id="hood-diag" class="hood"><p class="fine">Not run yet. The button loads a labelled diagnostic. It does not start a new model.</p></div>
         </div>
       </div>
       <p class="fine foot">Engine <span id="engine"></span>. Fictional data. Built for the Microsoft × Premier League Inside the Game hackathon. Source: <a href="https://github.com/er-s-an/other-pitch">github.com/er-s-an/other-pitch</a>.</p>

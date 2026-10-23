@@ -59,11 +59,36 @@ function roleOf(id: string) {
 function save() { if (!state.challenge) localStorage.setItem(STORE, JSON.stringify({ round: state.round, rounds: state.rounds, mode: state.mode })); }
 
 function ballPath(frames: Frame[], upto: number): XY[] { return frames.filter((f) => f.t <= upto + 1e-6).map((f) => f.ball); }
+function offsideXOf(players: Array<{ team: string; x: number }>): number {
+  const xs = players.filter((p) => p.team === "away").map((p) => p.x).sort((a, b) => b - a);
+  return xs.length >= 2 ? xs[1] : 105;
+}
+function applyMode() {
+  document.body.dataset.mode = state.mode;
+  document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode)));
+}
+function busy(on: boolean, msg = "Loading… the last picture stays up.") {
+  const n = $("#busy");
+  if (!n) return;
+  n.hidden = !on;
+  if (on) n.textContent = msg;
+}
+function pitchStatus(show: boolean, text: string, retry: boolean) {
+  const box = $("#pitch-status");
+  if (!box) return;
+  box.hidden = !show;
+  $("#pitch-status-text").textContent = text;
+  $("#pitch-retry").hidden = !retry;
+}
 
 // ---------------- rendering ----------------
 function render() {
   const b = state.bundle;
-  if (!b || !state.frames.length) return;
+  if (!b || !state.frames.length) {
+    pitchStatus(true, state.phase === "error" ? "This play did not load." : "Loading the play…", state.phase === "error");
+    return;
+  }
+  pitchStatus(false, "", false);
   const frame = framesAt(state.frames, state.t);
   const routes: Route[] = [];
   const highlights: Highlight[] = [];
@@ -76,17 +101,24 @@ function render() {
     routes.push({ points: ballPath(state.frames, state.t), color: mine ? YOU : OTHER, dashed: !mine,
       label: `${roleOf(state.view)} \u00b7 Simulated` });
   }
-  const key = b.key_defender_ids;
+  const key = state.mode === "analyst" ? b.key_defender_ids : b.key_defender_ids.slice(0, 1);
+  const showLabels = state.phase === "intro" || state.phase === "decide" || state.phase === "result";
   const iv = b.intervention;
-  if (iv) highlights.push({ id: iv.subject_id, label: `${surname(iv.subject_id)} \u00b7 moved`, ghostFrom: iv.field_changes[0].before as XY });
-  if (state.phase === "result" && state.view) {
+  if (iv) highlights.push({ id: iv.subject_id, label: showLabels ? `${surname(iv.subject_id)} \u00b7 moved` : "", ghostFrom: iv.field_changes[0].before as XY });
+  for (const k of key) {
+    const existing = highlights.find((h) => h.id === k);
+    const keyLabel = showLabels && k === key[0] ? `Key \u00b7 ${surname(k)}` : "";
+    if (existing) { if (keyLabel && !existing.label.startsWith("Key")) existing.label = `Key \u00b7 ${existing.label}`; }
+    else highlights.push({ id: k, label: keyLabel });
+  }
+  if (state.phase === "result" && state.view && state.mode === "analyst") {
     const br = branch(state.view);
     const blocker = br.inputs.blocking_defender_id as string | undefined;
-    if (blocker && !highlights.some((h) => h.id === blocker) && (br.metrics.p_lose_possession >= 0.3 || state.mode === "analyst"))
-      highlights.push({ id: blocker, label: surname(blocker) });
-  } else if (state.mode === "analyst") {
-    for (const k of key) if (!highlights.some((h) => h.id === k)) highlights.push({ id: k, label: "" });
+    if (blocker && !highlights.some((h) => h.id === blocker)) highlights.push({ id: blocker, label: showLabels ? surname(blocker) : "" });
   }
+  const targetIds = (state.phase === "intro" || state.phase === "decide")
+    ? b.branches.map((x) => x.receiver_id).filter((id): id is string => !!id)
+    : state.view && branch(state.view).receiver_id ? [branch(state.view).receiver_id as string] : [];
   let laneBand = null as null | { from: XY; to: XY };
   let zones: Array<{ at: XY; r: number }> = [];
   if (state.mode === "analyst" && state.view && state.phase === "result") {
@@ -99,7 +131,8 @@ function render() {
   const caption = state.phase === "leadin" ? `Approach \u00b7 ${rel.toFixed(1)} s` :
     state.phase === "intro" || state.phase === "decide" ? "Decision moment \u00b7 t = 0.0 s" :
     `Decision + ${rel.toFixed(1)} s`;
-  draw(canvas, { frame, players: b.players, carrierId: b.carrier_id, routes, highlights, targets, laneBand, zones, caption });
+  const offsideX = state.phase === "intro" || state.phase === "decide" ? offsideXOf(b.players) : null;
+  draw(canvas, { frame, players: b.players, carrierId: b.carrier_id, routes, highlights, targets, targetIds, laneBand, zones, caption, offsideX });
   $("#t-rel").textContent = caption;
 }
 
@@ -139,8 +172,8 @@ function header() {
   $("#variant-tag").hidden = b.variant_id === "base";
 }
 
-function metricRow(label: string, value: string, hint: string) {
-  return `<div class="metric"><dt>${esc(label)}</dt><dd>${esc(value)}</dd><p>${esc(hint)}</p></div>`;
+function metricRow(label: string, value: string, meaning: string) {
+  return `<div class="metric"><p class="meaning">${esc(meaning)}</p><dd>${esc(value)}</dd><dt>${esc(label)}</dt></div>`;
 }
 
 function resultCard(): string {
@@ -152,10 +185,15 @@ function resultCard(): string {
   html += `<h3 class="verdict">${esc(isMine ? text.headline : (e.verdict === "strongest" ? "This route was the strongest here." : text.headline))}</h3>`;
   html += `<p class="why">${esc(text.sentence)}</p>`;
   if (mode === "casual") {
-    html += `<dl class="metrics">` + e.casual.metric_claim_ids.map((cid) => {
+    const ids = e.casual.metric_claim_ids.slice(0, 2);
+    html += `<dl class="metrics">` + ids.map((cid) => {
       const c = claim(e, cid);
-      const hint = c.metric_name === "opportunity_value" ? "Synthetic chance score for the next 8 s. Not a goal probability." : "Internal estimate that the first pass arrives.";
-      return metricRow(c.label, c.display_value, hint);
+      const meaning = c.metric_name === "opportunity_value"
+        ? "Synthetic chance score for the next 8 seconds. Not a goal probability."
+        : c.metric_name === "p_complete"
+          ? "Internal estimate that this pass reaches the team-mate."
+          : c.label;
+      return metricRow(c.label, c.display_value, meaning);
     }).join("") + `</dl>`;
     html += `<p class="fine">${esc(e.casual.uncertainty)} Synthetic scenario.</p>`;
   } else {
@@ -169,6 +207,7 @@ function resultCard(): string {
     const inp = br.inputs;
     if (br.type === "pass") html += `<p class="fine">Inputs: pass ${Number(inp.pass_distance_m).toFixed(1)} m, lane block ${Number(inp.lane_block).toFixed(2)} (nearest: ${esc(surname(inp.blocking_defender_id as string))}), receiver pressure ${Number(inp.receiver_pressure_on_arrival).toFixed(2)}.</p>`;
     else html += `<p class="fine">Inputs: shot from ${Number(inp.shot_distance_m).toFixed(1)} m, pressure ${Number(inp.shot_pressure).toFixed(2)}.</p>`;
+    html += `<p class="fine">Synthetic model ${esc(b.generation.engine_version)} · ${b.horizon_s} s window · not a goal probability.</p>`;
     html += `<details class="defs"><summary>Definitions, assumptions, evidence</summary><ul>` +
       Object.entries(b.metric_definitions).map(([k, d]) => `<li><b>${esc(d.label)}</b> (${esc(k)}, ${esc(d.unit)}): ${esc(d.definition)}</li>`).join("") +
       e.analyst.assumptions.map((a) => `<li>${esc(a)}</li>`).join("") +
@@ -215,17 +254,21 @@ function renderPanel() {
   const b = state.bundle;
   panel.innerHTML = "";
   if (state.phase === "error") {
-    panel.append(el("div", "card", `<h3>Could not load this play.</h3><p>${esc(state.error ?? "")}</p><button class="btn" type="button" data-act="retry">Retry</button>`));
+    $("#scene-title").textContent = b?.title ?? "Could not load";
+    $("#scene-brief").textContent = b ? b.brief : "The catalogue or the play bundle did not load. Retry, or go back to the first play.";
+    panel.append(el("div", "card", `<h3>Could not load this play.</h3><p>${esc(state.error || "The request failed. The previous picture stays up when one was already on screen.")}</p><div class="row"><button class="btn primary" type="button" data-act="retry">Retry</button><button class="btn ghost" type="button" data-act="restart">Back to the first play</button></div>`));
     return;
   }
-  if (!b) return;
+  if (!b) {
+    panel.append(el("div", "card", `<h3>Loading the play</h3><p>Fetching the validated bundle. This page does not pretend an agent is running.</p><div class="row"><button class="btn" type="button" data-act="retry">Retry</button></div>`));
+    return;
+  }
   header();
   if (state.phase === "intro") {
     panel.append(el("div", "card intro", `<p class="kicker">${state.round === 0 && !state.challenge ? "Your call" : "Next play"}</p>
       <h3>${esc(b.tactic)}</h3>
-      <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The ball carrier has a white ring.</p>
-      <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
-      <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button></div>`));
+      <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The panel ball is the one in black and white. A white ring is the carrier, a gold ring is a receiver, a red ring is the key defender.</p>
+      <p class="fine">Start the play under the pitch. Sandbox, in the top bar, lets you edit this play.</p>`));
   } else if (state.phase === "leadin") {
     panel.append(el("div", "card", `<p class="kicker">Approach</p><h3>Watch the runs.</h3><button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>`));
   } else if (state.phase === "decide") {
@@ -285,29 +328,40 @@ function renderRecap(panel: HTMLElement) {
 async function loadScene(scene: string, variant: string, keepView = false) {
   const token = ++state.token;
   const prev = state.bundle;
+  busy(true, prev ? "Loading this condition… the last picture stays up." : "Loading the play…");
   try {
     const b = await getJSON<Bundle>(`${scene}/${variant}/bundle.json`);
     if (token !== state.token) return;
     state.deltaFrom = keepView && prev && prev.scene_id === scene && prev.variant_id !== variant ? prev : null;
     state.bundle = b;
     state.variant = variant;
+    state.error = "";
     return b;
   } catch (e) {
     if (token !== state.token) return;
     state.error = `The validated bundle for this play did not load (${(e as Error).message}). The previous screen is kept.`;
     if (!prev) setPhase("error"); else { state.bundle = prev; toast(state.error); }
     return undefined;
+  } finally {
+    if (token === state.token) busy(false);
   }
 }
 
 async function showView(id: string) {
   const b = state.bundle!;
-  state.view = id;
   const token = ++state.token;
+  busy(true, "Loading this route… the last picture stays up.");
   let m: Motion;
   try { m = await getJSON<Motion>(`${b.scene_id}/${b.variant_id}/${branch(id).frames_ref}`); }
-  catch (e) { toast(`Motion for this route did not load. ${(e as Error).message}`); return; }
+  catch (e) {
+    if (token !== state.token) return;
+    busy(false);
+    toast(`This route did not load (${(e as Error).message}). The previous picture stays on the pitch.`);
+    return;
+  }
   if (token !== state.token) return;
+  busy(false);
+  state.view = id;
   setPhase(state.phase === "result" ? "result" : "branch");
   const end = m.frames[m.frames.length - 1].t;
   play(m.frames, 0, end, () => { if (state.phase === "branch") afterBranch(); else render(); });
@@ -346,19 +400,41 @@ function choose(id: string) {
     state.rounds[state.round] = { scene: b.scene_id, pick: id, recorded: b.recorded_action_id, top: top().action_id, focus: b.focus, verdict: expl(id).verdict, explored: [], variantSeen: [b.variant_id] };
     save();
   }
-  state.phase = "branch";
   void showView(id);
 }
 
 async function setVariant(v: string) {
-  if (!state.bundle || v === state.bundle.variant_id) return;
+  if (!state.bundle || v === state.bundle.variant_id || !state.view) return;
+  const prev = state.bundle;
   const view = state.view;
-  const b = await loadScene(state.bundle.scene_id, v, true);
-  if (!b || !view) return;
-  const rec = state.rounds[state.round];
-  if (rec && !rec.variantSeen.includes(v)) { rec.variantSeen.push(v); save(); }
-  state.phase = "result";
-  await showView(view);
+  const token = ++state.token;
+  busy(true, "Loading this condition… the last picture stays up.");
+  try {
+    const b = await getJSON<Bundle>(`${prev.scene_id}/${v}/bundle.json`);
+    if (token !== state.token) return;
+    const br = b.branches.find((x) => x.action_id === view);
+    if (!br) throw new Error("that route is not in this condition");
+    const m = await getJSON<Motion>(`${prev.scene_id}/${v}/${br.frames_ref}`);
+    if (token !== state.token) return;
+    busy(false);
+    state.deltaFrom = prev;
+    state.bundle = b;
+    state.variant = v;
+    state.view = view;
+    state.error = "";
+    state.t = 0;
+    state.frames = m.frames;
+    const rec = state.rounds[state.round];
+    if (rec && !rec.variantSeen.includes(v)) { rec.variantSeen.push(v); save(); }
+    setPhase("result");
+    const end = m.frames[m.frames.length - 1].t;
+    play(m.frames, 0, end, () => render());
+  } catch (e) {
+    if (token !== state.token) return;
+    busy(false);
+    state.bundle = prev;
+    toast(`This condition did not load (${(e as Error).message}). The previous picture stays up.`);
+  }
 }
 
 function shareURL(scene: string, pick: string | null) {
@@ -427,9 +503,9 @@ document.addEventListener("click", (ev) => {
   if (t.dataset.app) { if (t.dataset.app === "sandbox" && !hasState()) sbLoad("central-lane"); setApp(t.dataset.app as "tutorial" | "sandbox"); return; }
   if (t.dataset.sel || t.dataset.tool || t.dataset.sbact) return;
   if (t.dataset.pick) choose(t.dataset.pick);
-  else if (t.dataset.view) { state.phase = "result"; void showView(t.dataset.view); }
+  else if (t.dataset.view) void showView(t.dataset.view);
   else if (t.dataset.variant) void setVariant(t.dataset.variant);
-  else if (t.dataset.mode) { state.mode = t.dataset.mode as Mode; document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode))); save(); renderPanel(); render(); }
+  else if (t.dataset.mode) { state.mode = t.dataset.mode as Mode; applyMode(); save(); renderPanel(); render(); showSandbox(); }
   else switch (t.dataset.act) {
     case "start": startLeadin(); break;
     case "skip": state.token++; state.t = 0; setPhase("decide"); break;
@@ -442,9 +518,11 @@ document.addEventListener("click", (ev) => {
       else { state.round = ROUNDS.length; save(); setPhase("recap"); }
       break;
     case "restart": localStorage.removeItem(STORE); state.round = 0; state.rounds = []; void beginRound(); break;
-    case "retry": void beginRound(); break;
+    case "retry": void retryLoad(); break;
     case "diag": void runDiagnostic(); break;
-    case "edit": sbLoad(state.bundle!.scene_id, state.bundle!.variant_id); setApp("sandbox"); break;
+    case "edit":
+      if (!state.bundle) { toast("The play is still loading."); break; }
+      sbLoad(state.bundle.scene_id, state.bundle.variant_id); setApp("sandbox"); break;
   }
 });
 
@@ -470,7 +548,22 @@ function setApp(app: "tutorial" | "sandbox") {
   if (app === "sandbox") { showSandbox(); window.scrollTo({ top: 0 }); }
 }
 
+async function retryLoad() {
+  if (!state.catalog) {
+    try {
+      state.catalog = await getJSON<Catalog>("scenes.json");
+      $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;
+    } catch (e) {
+      state.error = `Scene catalogue did not load (${(e as Error).message}).`;
+      setPhase("error");
+      return;
+    }
+  }
+  await beginRound();
+}
+
 async function boot() {
+  applyMode();
   initSandbox();
   const sbq = new URLSearchParams(location.search).get("sb");
   if (sbq) { if (decodeState(sbq)) { setApp("sandbox"); showSandbox(); sbRecompute(); } else toast("That sandbox link could not be read. Here is the first play."); }
@@ -486,8 +579,11 @@ async function boot() {
     if (!sc || !sc.variants.some((v) => v.variant_id === variant)) toast("That challenge is not available. Here is the current play.");
     else {
       if (q.get("v") && q.get("v") !== sc.scenario_version) toast("This challenge was made for an older version of the play. Your answer will not count as the same challenge.");
-      const pickOk = q.get("pick") && (await getJSON<Bundle>(`${ch}/${variant}/bundle.json`)).branches.some((b) => b.action_id === q.get("pick"));
-      state.challenge = { scene: ch, variant, pick: pickOk ? q.get("pick") : null };
+      let pickOk = false;
+      try {
+        pickOk = !!(q.get("pick") && (await getJSON<Bundle>(`${ch}/${variant}/bundle.json`)).branches.some((b) => b.action_id === q.get("pick")));
+        state.challenge = { scene: ch, variant, pick: pickOk ? q.get("pick") : null };
+      } catch (e) { toast(`That challenge did not load (${(e as Error).message}). Here is the current play.`); }
     }
   } else {
     try {
@@ -495,7 +591,7 @@ async function boot() {
       if (saved && Array.isArray(saved.rounds)) { state.rounds = saved.rounds; state.round = Math.min(saved.round, ROUNDS.length); state.mode = saved.mode ?? "casual"; }
     } catch { /* ignore */ }
   }
-  document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode)));
+  applyMode();
   void loadHeldout();
   if (state.round >= ROUNDS.length && !state.challenge) { state.round = ROUNDS.length - 1; await beginRound(); state.round = ROUNDS.length; setPhase("recap"); return; }
   await beginRound();

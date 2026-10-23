@@ -87,38 +87,122 @@ export interface DrawInput {
   frame: Frame; players: PlayerInfo[]; carrierId: string; routes: Route[]; targets?: Array<{ id: string; at: XY; label: string; hot: boolean; below?: boolean }>;
   highlights: Highlight[]; laneBand?: { from: XY; to: XY } | null; zones?: Array<{ at: XY; r: number }>; caption?: string;
   arrows?: Array<{ at: XY; v: XY }>; selected?: string | null; offsideX?: number | null;
+  /** Player ids who can receive the current pass. Gold dashed ring plus shirt number. */
+  targetIds?: string[];
 }
 
-function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, at: XY, ring: string | null) {
+type RingKind = "carrier" | "target" | "key" | "select";
+
+function strokeRing(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string, width: number, dash?: number[]) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  if (dash) ctx.setLineDash(dash);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, at: XY, rings: RingKind[]) {
   const [x, y] = px(l, at[0], at[1]);
-  const r = Math.max(7.5, l.s * 1.05);
-  ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r, r * 0.35, 0, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fill();
+  const r = Math.max(8, l.s * 1.08);
+  ctx.beginPath(); ctx.ellipse(x, y + r * 0.9, r * 1.05, r * 0.38, 0, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fill();
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = info.team === "home" ? HOME : AWAY; ctx.fill();
-  ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
-  if (info.team === "away") { // away: square notch so teams differ by shape, not only colour
+  ctx.lineWidth = 1.4; ctx.strokeStyle = "rgba(0,0,0,0.65)"; ctx.stroke();
+  if (info.team === "away") {
     ctx.fillStyle = "#c9463d"; ctx.fillRect(x - r * 0.55, y - r - 1, r * 1.1, r * 0.42);
   }
-  if (ring) { ctx.beginPath(); ctx.arc(x, y, r + 4.5, 0, Math.PI * 2); ctx.strokeStyle = ring; ctx.lineWidth = 2.4; ctx.stroke(); }
-  ctx.fillStyle = info.team === "home" ? HOME_INK : AWAY_INK;
-  ctx.font = `700 ${Math.max(9, Math.round(r * 0.95))}px "Public Sans", sans-serif`;
+  // Dark backing ring so white, gold and red stay readable on both shirts and both grass stripes.
+  let extra = 0;
+  if (rings.includes("key")) {
+    strokeRing(ctx, x, y, r + 4 + extra, "#0b1a14", 4.4);
+    strokeRing(ctx, x, y, r + 4 + extra, "#e8574c", 2.4);
+    extra += 4;
+  }
+  if (rings.includes("target")) {
+    strokeRing(ctx, x, y, r + 4 + extra, "#0b1a14", 4.2);
+    strokeRing(ctx, x, y, r + 4 + extra, YOU, 2.2, [3.5, 3]);
+    extra += 4;
+  }
+  if (rings.includes("carrier")) {
+    strokeRing(ctx, x, y, r + 4 + extra, "#0b1a14", 5);
+    strokeRing(ctx, x, y, r + 4 + extra, "#f7f4ea", 2.6);
+    extra += 4;
+  }
+  if (rings.includes("select")) {
+    strokeRing(ctx, x, y, r + 4 + extra, YOU, 3);
+  }
+  const num = String(info.number);
+  const fs = Math.max(11, Math.round(r * 0.98));
+  ctx.font = `700 ${fs}px "Public Sans", sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(String(info.number), x, y + 0.5);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = info.team === "home" ? "rgba(255,255,255,0.55)" : "rgba(11,26,20,0.35)";
+  ctx.strokeText(num, x, y + 0.5);
+  ctx.fillStyle = info.team === "home" ? HOME_INK : AWAY_INK;
+  ctx.fillText(num, x, y + 0.5);
 }
 
-function tag(ctx: CanvasRenderingContext2D, l: Layout, at: XY, text: string, color: string, below = false) {
+interface Box { x: number; y: number; w: number; h: number }
+function overlaps(a: Box, b: Box, gap = 3) {
+  return a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+}
+
+function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, br: number) {
+  ctx.beginPath(); ctx.ellipse(x, y + br * 0.95, br * 0.95, br * 0.36, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, br + 2.2, 0, Math.PI * 2); ctx.fillStyle = "#14120c"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, br, 0, Math.PI * 2); ctx.fillStyle = "#f4f1e6"; ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, br - 0.4, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = "#161814";
+  ctx.beginPath();
+  const pr = br * 0.48;
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const px0 = x + Math.cos(a) * pr, py0 = y + Math.sin(a) * pr;
+    if (i) ctx.lineTo(px0, py0); else ctx.moveTo(px0, py0);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(x, y, br, 0, Math.PI * 2);
+  ctx.lineWidth = Math.max(1.4, br * 0.16);
+  ctx.strokeStyle = "#161814";
+  ctx.stroke();
+}
+
+function paintTag(ctx: CanvasRenderingContext2D, l: Layout, occupied: Box[], at: XY, text: string, color: string, below = false) {
   const [cx0, y0] = px(l, at[0], at[1]);
-  const fs = Math.max(10, Math.min(13, l.s * 1.45));
+  const fs = Math.max(11, Math.min(13, l.s * 1.45));
   ctx.font = `600 ${fs}px "Public Sans", sans-serif`;
-  const w = ctx.measureText(text).width + 12, h = fs + 9;
-  const y = below ? y0 + l.s * 1.6 + 4 : y0 - l.s * 1.6 - h - 4;
-  let x = cx0 - w / 2;
-  x = Math.max(4, Math.min(l.w - w - 4, x));
-  ctx.fillStyle = "rgba(6,12,10,0.86)";
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill();
-  ctx.fillStyle = color; ctx.fillRect(x, y, 3, h);
+  const w = Math.min(l.w - 8, ctx.measureText(text).width + 14);
+  const h = fs + 10;
+  const prefs = below ? [1, -1] : [-1, 1];
+  const candidates: Box[] = [];
+  for (const dir of prefs) {
+    for (let step = 0; step < 5; step++) {
+      const y = dir < 0 ? y0 - l.s * 1.7 - h - 4 - step * (h + 3) : y0 + l.s * 1.7 + 4 + step * (h + 3);
+      const x = Math.max(4, Math.min(l.w - w - 4, cx0 - w / 2));
+      candidates.push({ x, y, w, h });
+    }
+  }
+  for (const sx of [1, -1]) {
+    const x = Math.max(4, Math.min(l.w - w - 4, cx0 + sx * (l.s * 1.6 + w * 0.15)));
+    const y = Math.max(4, Math.min(l.h - h - 4, y0 - h / 2));
+    candidates.push({ x, y, w, h });
+  }
+  let chosen = candidates[0];
+  for (const c of candidates) {
+    if (c.y < 2 || c.y + c.h > l.h - 2) continue;
+    if (!occupied.some((o) => overlaps(c, o))) { chosen = c; break; }
+  }
+  occupied.push(chosen);
+  ctx.fillStyle = "rgba(6,12,10,0.9)";
+  ctx.beginPath(); ctx.roundRect(chosen.x, chosen.y, chosen.w, chosen.h, 4); ctx.fill();
+  ctx.fillStyle = color; ctx.fillRect(chosen.x, chosen.y, 3, chosen.h);
   ctx.fillStyle = "#F3F0E7"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  ctx.fillText(text, x + 8, y + h / 2 + 0.5);
+  ctx.fillText(text, chosen.x + 8, chosen.y + chosen.h / 2 + 0.5, Math.max(0, chosen.w - 12));
 }
 
 export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
@@ -166,8 +250,14 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   }
   if (d.offsideX != null) {
     const [ox, oy0] = px(l, d.offsideX, 0), [, oy1] = px(l, d.offsideX, W);
-    ctx.save(); ctx.setLineDash([2, 6]); ctx.strokeStyle = "rgba(242,238,227,0.35)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1); ctx.stroke(); ctx.restore();
+    ctx.save();
+    ctx.setLineDash([8, 5]);
+    ctx.lineCap = "butt";
+    ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1);
+    ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 4; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1);
+    ctx.strokeStyle = "rgba(243,240,231,0.95)"; ctx.lineWidth = 1.7; ctx.stroke();
+    ctx.restore();
   }
   for (const a of d.arrows ?? []) {
     const [x1, y1] = px(l, ...a.at), [x2, y2] = px(l, a.at[0] + a.v[0] * 1.2, a.at[1] + a.v[1] * 1.2);
@@ -177,31 +267,63 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     ctx.lineTo(x2 - 6 * Math.cos(ang - 0.5), y2 - 6 * Math.sin(ang - 0.5)); ctx.lineTo(x2 - 6 * Math.cos(ang + 0.5), y2 - 6 * Math.sin(ang + 0.5)); ctx.closePath();
     ctx.fillStyle = "rgba(242,238,227,0.45)"; ctx.fill(); ctx.restore();
   }
-  const ringFor = new Map(d.highlights.map((h) => [h.id, "#E8574C"]));
-  if (d.selected) ringFor.set(d.selected, YOU);
-  ringFor.set(d.carrierId, "#F3F0E7");
+  const targetSet = new Set(d.targetIds ?? []);
+  const keySet = new Set(d.highlights.map((h) => h.id));
   for (const info of d.players) {
     const at = d.frame.p[info.id];
-    if (at) playerDisc(ctx, l, info, at, ringFor.get(info.id) ?? null);
+    if (!at) continue;
+    const rings: RingKind[] = [];
+    if (keySet.has(info.id)) rings.push("key");
+    if (targetSet.has(info.id)) rings.push("target");
+    if (info.id === d.carrierId) rings.push("carrier");
+    if (info.id === d.selected) rings.push("select");
+    playerDisc(ctx, l, info, at, rings);
   }
-  // ball
-  const [bx, by] = px(l, ...d.frame.ball), br = Math.max(4.5, l.s * 0.62);
-  ctx.beginPath(); ctx.arc(bx, by, br + 2.5, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fill();
-  ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = "#FFFFFF"; ctx.fill();
-  ctx.lineWidth = 1.4; ctx.strokeStyle = "#0b0c0a"; ctx.stroke();
-  for (const h of d.highlights) { const at = d.frame.p[h.id]; if (at && h.label) tag(ctx, l, at, h.label, "#E8574C", true); }
-  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) tag(ctx, l, end, r.label, r.color); }
-  for (const t of d.targets ?? []) tag(ctx, l, t.at, t.label, YOU, t.below);
+  const solid = [...d.routes].reverse().find((r) => !r.dashed && r.points.length > 4);
+  const [bx, by] = px(l, ...d.frame.ball);
+  const br = Math.max(5.6, l.s * 0.78);
+  if (solid) {
+    const tail = solid.points.slice(-7, -1);
+    tail.forEach((p, i) => {
+      const [tx, ty] = px(l, p[0], p[1]);
+      ctx.beginPath();
+      ctx.arc(tx, ty, Math.max(2, br * (0.28 + i * 0.06)), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(20,18,12,${0.18 + i * 0.08})`;
+      ctx.fill();
+    });
+  }
+  drawBall(ctx, bx, by, br);
+  const occupied: Box[] = [];
+  const discR = Math.max(8, l.s * 1.08) + 12;
+  for (const info of d.players) {
+    const at = d.frame.p[info.id];
+    if (!at) continue;
+    const [x, y] = px(l, at[0], at[1]);
+    occupied.push({ x: x - discR, y: y - discR, w: discR * 2, h: discR * 2 });
+  }
+  occupied.push({ x: bx - br - 4, y: by - br - 4, w: (br + 4) * 2, h: (br + 4) * 2 });
   if (d.caption) {
-    ctx.font = `600 ${Math.max(10, l.s * 1.3)}px "Public Sans", sans-serif`;
-    ctx.fillStyle = "rgba(240,236,224,0.8)"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    const [cx, cy] = px(l, VIEW_X0 + 1.5, 3.2); ctx.fillText(d.caption, cx, cy);
+    ctx.font = `600 ${Math.max(11, l.s * 1.35)}px "Public Sans", sans-serif`;
+    const capW = Math.min(l.w * 0.55, ctx.measureText(d.caption).width + 8);
+    const [cx, cy] = px(l, VIEW_X0 + 1.5, 3.2);
+    occupied.push({ x: cx - 2, y: cy - 10, w: capW, h: 20 });
+    ctx.fillStyle = "rgba(11,26,20,0.55)";
+    ctx.fillRect(cx - 4, cy - 9, capW + 4, 18);
+    ctx.fillStyle = "rgba(243,240,231,0.95)"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(d.caption, cx, cy);
   }
+  const [ax, ay] = px(l, L - 30, 3.2);
+  occupied.push({ x: ax - 4, y: ay - 10, w: 130, h: 20 });
+  for (const h of d.highlights) { const at = d.frame.p[h.id]; if (at && h.label) paintTag(ctx, l, occupied, at, h.label, "#E8574C", true); }
+  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) paintTag(ctx, l, occupied, end, r.label, r.color); }
+  for (const t of d.targets ?? []) if (t.label) paintTag(ctx, l, occupied, t.at, t.label, YOU, !!t.below);
+  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 7.2], "Offside", "#f3f0e7", false);
 }
 
 export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
   const l = layoutOf(canvas.clientWidth, canvas.clientHeight);
-  let best: string | null = null, bd = 26;
+  const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+  let best: string | null = null, bd = coarse ? 32 : 26;
   for (const t of targets) { const [x, y] = px(l, ...t.at); const d = Math.hypot(x - ex, y - ey); if (d < bd) { bd = d; best = t.id; } }
   return best;
 }
