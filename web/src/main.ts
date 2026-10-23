@@ -268,7 +268,9 @@ function renderPanel() {
     panel.append(el("div", "card intro", `<p class="kicker">${state.round === 0 && !state.challenge ? "Your call" : "Next play"}</p>
       <h3>${esc(b.tactic)}</h3>
       <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The panel ball is the one in black and white. A white ring is the carrier, a gold ring is a receiver, a red ring is the key defender.</p>
-      <p class="fine">Start the play under the pitch. Sandbox, in the top bar, lets you edit this play.</p>`));
+      <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
+      <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
+      <button class="btn ghost" type="button" data-act="edit">Edit this play</button></div>`));
   } else if (state.phase === "leadin") {
     panel.append(el("div", "card", `<p class="kicker">Approach</p><h3>Watch the runs.</h3><button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>`));
   } else if (state.phase === "decide") {

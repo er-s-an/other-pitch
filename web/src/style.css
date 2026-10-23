@@ -158,6 +158,7 @@ body[data-mode="analyst"] .card h3 { margin-bottom: 4px; }
   .stage { position: sticky; top: 0; z-index: 3; background: var(--night); padding-bottom: 6px; }
   body:not([data-phase="intro"]) .stage-head { display: none; }
   .pitch-wrap { max-height: 50vh; }
+  body[data-phase="intro"] .pitch-wrap { max-height: min(42vh, calc(100vh - 380px)); }
   .stage-foot .legend { gap: 8px 12px; }
   .stage-head { align-items: stretch; }
   .task { max-width: none; }

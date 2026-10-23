@@ -73,7 +73,7 @@ function field(ctx: CanvasRenderingContext2D, l: Layout) {
   }
   ctx.restore();
   // attack direction cue
-  const [ax, ay] = px(l, L - 30, 3.2);
+  const [ax, ay] = px(l, VIEW_X0 + 1.5, W - 3.4);
   ctx.fillStyle = "rgba(240,236,224,0.55)";
   ctx.font = `600 ${Math.max(10, l.s * 1.35)}px "Public Sans", sans-serif`;
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
@@ -145,8 +145,13 @@ function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, 
 }
 
 interface Box { x: number; y: number; w: number; h: number }
-function overlaps(a: Box, b: Box, gap = 3) {
+function overlaps(a: Box, b: Box, gap = 8) {
   return a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+}
+function overlapArea(a: Box, b: Box) {
+  const w = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const h = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  return w * h;
 }
 
 function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, br: number) {
@@ -180,22 +185,24 @@ function paintTag(ctx: CanvasRenderingContext2D, l: Layout, occupied: Box[], at:
   const h = fs + 10;
   const prefs = below ? [1, -1] : [-1, 1];
   const candidates: Box[] = [];
+  const clampX = (x: number) => Math.max(4, Math.min(l.w - w - 4, x));
   for (const dir of prefs) {
-    for (let step = 0; step < 5; step++) {
-      const y = dir < 0 ? y0 - l.s * 1.7 - h - 4 - step * (h + 3) : y0 + l.s * 1.7 + 4 + step * (h + 3);
-      const x = Math.max(4, Math.min(l.w - w - 4, cx0 - w / 2));
-      candidates.push({ x, y, w, h });
+    for (let step = 0; step < 4; step++) {
+      const y = dir < 0 ? y0 - l.s * 1.8 - h - 4 - step * (h + 2) : y0 + l.s * 1.8 + 4 + step * (h + 2);
+      for (const slide of [0, -0.7, 0.7, -1.3, 1.3]) candidates.push({ x: clampX(cx0 - w / 2 + slide * w), y, w, h });
     }
   }
   for (const sx of [1, -1]) {
-    const x = Math.max(4, Math.min(l.w - w - 4, cx0 + sx * (l.s * 1.6 + w * 0.15)));
-    const y = Math.max(4, Math.min(l.h - h - 4, y0 - h / 2));
-    candidates.push({ x, y, w, h });
+    for (const dy of [0, -(h + 6), h + 6]) {
+      candidates.push({ x: clampX(cx0 + sx * (l.s * 1.8 + 8)), y: Math.max(4, Math.min(l.h - h - 4, y0 - h / 2 + dy)), w, h });
+    }
   }
   let chosen = candidates[0];
+  let best = Infinity;
   for (const c of candidates) {
     if (c.y < 2 || c.y + c.h > l.h - 2) continue;
-    if (!occupied.some((o) => overlaps(c, o))) { chosen = c; break; }
+    const hit = occupied.reduce((sum, o) => sum + (overlaps(c, o) ? overlapArea(c, o) + 64 : 0), 0);
+    if (hit < best) { best = hit; chosen = c; if (hit === 0) break; }
   }
   occupied.push(chosen);
   ctx.fillStyle = "rgba(6,12,10,0.9)";
@@ -280,8 +287,15 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     playerDisc(ctx, l, info, at, rings);
   }
   const solid = [...d.routes].reverse().find((r) => !r.dashed && r.points.length > 4);
-  const [bx, by] = px(l, ...d.frame.ball);
   const br = Math.max(5.6, l.s * 0.78);
+  let ballAt = d.frame.ball;
+  const carrierAt = d.frame.p[d.carrierId];
+  if (carrierAt && Math.hypot(ballAt[0] - carrierAt[0], ballAt[1] - carrierAt[1]) < 1.4) {
+    const discPx = Math.max(8, l.s * 1.08);
+    const sep = (discPx + br + 4) / Math.max(1, l.s);
+    ballAt = [carrierAt[0] + sep, carrierAt[1]];
+  }
+  const [bx, by] = px(l, ...ballAt);
   if (solid) {
     const tail = solid.points.slice(-7, -1);
     tail.forEach((p, i) => {
@@ -294,14 +308,20 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   }
   drawBall(ctx, bx, by, br);
   const occupied: Box[] = [];
-  const discR = Math.max(8, l.s * 1.08) + 12;
+  const discR = Math.max(8, l.s * 1.08) + 16;
   for (const info of d.players) {
     const at = d.frame.p[info.id];
     if (!at) continue;
     const [x, y] = px(l, at[0], at[1]);
     occupied.push({ x: x - discR, y: y - discR, w: discR * 2, h: discR * 2 });
   }
-  occupied.push({ x: bx - br - 4, y: by - br - 4, w: (br + 4) * 2, h: (br + 4) * 2 });
+  occupied.push({ x: bx - br - 12, y: by - br - 12, w: (br + 12) * 2, h: (br + 12) * 2 });
+  // Keep tags off the top cue, the corner badge, and the bottom edge.
+  const [, topY] = px(l, 0, 0);
+  occupied.push({ x: 0, y: Math.max(0, topY - 4), w: l.w, h: l.s * 5.2 });
+  occupied.push({ x: l.w - 168, y: l.h - 40, w: 168, h: 40 });
+  const [atkX, atkY] = px(l, VIEW_X0 + 1.5, W - 3.4);
+  occupied.push({ x: atkX - 4, y: atkY - 12, w: 120, h: 24 });
   if (d.caption) {
     ctx.font = `600 ${Math.max(11, l.s * 1.35)}px "Public Sans", sans-serif`;
     const capW = Math.min(l.w * 0.55, ctx.measureText(d.caption).width + 8);
@@ -312,12 +332,13 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     ctx.fillStyle = "rgba(243,240,231,0.95)"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
     ctx.fillText(d.caption, cx, cy);
   }
-  const [ax, ay] = px(l, L - 30, 3.2);
-  occupied.push({ x: ax - 4, y: ay - 10, w: 130, h: 20 });
-  for (const h of d.highlights) { const at = d.frame.p[h.id]; if (at && h.label) paintTag(ctx, l, occupied, at, h.label, "#E8574C", true); }
-  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) paintTag(ctx, l, occupied, end, r.label, r.color); }
-  for (const t of d.targets ?? []) if (t.label) paintTag(ctx, l, occupied, t.at, t.label, YOU, !!t.below);
-  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 7.2], "Offside", "#f3f0e7", false);
+  for (const h of d.highlights) {
+    const at = d.frame.p[h.id];
+    if (at && h.label) paintTag(ctx, l, occupied, at, h.label, "#E8574C", at[1] < 18);
+  }
+  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) paintTag(ctx, l, occupied, end, r.label, r.color, end[1] < 18); }
+  for (const t of d.targets ?? []) if (t.label) paintTag(ctx, l, occupied, t.at, t.label, YOU, t.below ?? t.at[1] < 18);
+  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 20], "Offside", "#f3f0e7", true);
 }
 
 export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
