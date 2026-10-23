@@ -249,12 +249,11 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
       ctx.restore();
     }
   }
-  for (const t of d.targets ?? []) {
-    const [x, y] = px(l, ...t.at);
-    ctx.beginPath(); ctx.arc(x, y, t.hot ? 15 : 12, 0, Math.PI * 2);
-    ctx.strokeStyle = t.hot ? YOU : "rgba(245,197,66,0.75)"; ctx.lineWidth = t.hot ? 3 : 1.8; ctx.setLineDash(t.hot ? [] : [4, 4]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = YOU; ctx.fill();
-  }
+  const reserved: Box[] = [];
+  const [capX, capY] = px(l, VIEW_X0 + 1.5, 3.2);
+  reserved.push({ x: capX - 6, y: capY - 14, w: Math.min(300, l.w * 0.58), h: 26 });
+  const [atkX, atkY] = px(l, L - 30, 3.2);
+  reserved.push({ x: atkX - 6, y: atkY - 14, w: 150, h: 26 });
   if (d.offsideX != null) {
     const [ox, oy0] = px(l, d.offsideX, 0), [, oy1] = px(l, d.offsideX, W);
     ctx.save();
@@ -341,7 +340,7 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 20], "Offside", "#f3f0e7", true);
 }
 
-export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
+export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number, pad = 36): string | null {
   const l = layoutOf(canvas.clientWidth, canvas.clientHeight);
   const coarse = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
   let best: string | null = null, bd = coarse ? 32 : 26;

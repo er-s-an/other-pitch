@@ -155,9 +155,31 @@ function play(frames: Frame[], from: number, to: number, done: () => void) {
 }
 
 // ---------------- panels ----------------
+function syncChrome() {
+  const cta = $("#stage-cta");
+  const showCta = !!state.bundle && (state.phase === "intro" || state.phase === "leadin");
+  cta.hidden = !showCta;
+  cta.querySelectorAll<HTMLButtonElement>("[data-act]").forEach((b) => {
+    b.hidden = state.phase === "leadin" ? b.dataset.act !== "skip" : false;
+  });
+  const status = $("#pitch-status");
+  if (state.phase === "error" && !state.frames.length) {
+    status.hidden = false;
+    status.innerHTML = `<p>${esc(state.error || "This play did not load.")}</p><button class="btn primary" type="button" data-act="retry">Retry</button>`;
+    return;
+  }
+  if (!state.bundle || !state.frames.length) {
+    status.hidden = false;
+    status.innerHTML = "<p>Loading the first play…</p>";
+    return;
+  }
+  status.hidden = true;
+}
+
 function setPhase(p: Phase) {
   state.phase = p;
   document.body.dataset.phase = p;
+  syncChrome();
   renderPanel();
   render();
 }
@@ -197,11 +219,11 @@ function resultCard(): string {
     }).join("") + `</dl>`;
     html += `<p class="fine">${esc(e.casual.uncertainty)} Synthetic scenario.</p>`;
   } else {
-    html += `<table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Shot quality</th><th>Opportunity</th></tr></thead><tbody>`;
+    html += `<div class="table-scroll"><table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Shot quality</th><th>Opportunity</th></tr></thead><tbody>`;
     for (const x of b.branches) {
       html += `<tr class="${x.action_id === id ? "on" : ""}"><td>${esc(x.label)}<small>${esc(roleOf(x.action_id))}</small></td><td>${pct(x.metrics.p_complete)}</td><td>${pct(x.metrics.p_lose_possession)}</td><td>${score(x.metrics.q_shot)}</td><td><b>${score(x.metrics.opportunity_value)}</b></td></tr>`;
     }
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
     html += `<h4>Outcome tree \u00b7 ${esc(br.label)}</h4><ul class="tree">` + br.outcome_tree.leaves.map((l) =>
       `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("") + `</ul>`;
     const inp = br.inputs;
@@ -531,9 +553,21 @@ document.addEventListener("click", (ev) => {
 canvas.addEventListener("click", (ev) => {
   if (state.phase !== "decide" || !state.bundle) return;
   const r = canvas.getBoundingClientRect();
-  const id = hitTarget(canvas, state.bundle.branches.map((b) => ({ id: b.action_id, at: (b.type === "shot" ? [103, 34] : b.target) as XY })), ev.clientX - r.left, ev.clientY - r.top);
+  const pad = window.matchMedia("(pointer: coarse)").matches ? 48 : 36;
+  const id = hitTarget(canvas, state.bundle.branches.map((b) => ({ id: b.action_id, at: (b.type === "shot" ? [103, 34] : b.target) as XY })), ev.clientX - r.left, ev.clientY - r.top, pad);
   if (id) choose(id);
 });
+
+async function retryLoad() {
+  $("#pitch-status").hidden = false;
+  $("#pitch-status").innerHTML = "<p>Loading the first play…</p>";
+  if (!state.catalog) {
+    try { state.catalog = await getJSON<Catalog>("scenes.json"); }
+    catch (e) { state.error = `Scene catalogue did not load (${(e as Error).message}).`; setPhase("error"); return; }
+    $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;
+  }
+  await beginRound();
+}
 
 new ResizeObserver(() => render()).observe(canvas);
 
