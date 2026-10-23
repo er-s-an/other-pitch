@@ -9,14 +9,6 @@ const SCENES = (scenariosJson as unknown as { scenes: Record<string, Snapshot & 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-const TOOL_HINT: Record<Tool, string> = {
-  move: "Drag any player. Rankings recompute while you drag.",
-  ball: "Tap an attacker to give them the ball.",
-  "add-def": "Tap open grass to add a defender.",
-  "add-att": "Tap open grass to add an attacker.",
-  remove: "Tap a player to remove them. Give the ball away before removing the carrier.",
-};
-
 const SLIDERS: Array<{ key: keyof Params; label: string; min: number; max: number; step: number; unit: string }> = [
   { key: "DEF_SPEED", label: "Defender speed", min: 3, max: 9, step: 0.5, unit: "m/s" },
   { key: "DEF_REACTION_S", label: "Defender reaction delay", min: 0, max: 1.2, step: 0.1, unit: "s" },
@@ -98,29 +90,6 @@ function recompute(resetSel = false) {
   sb.full.push(performance.now() - tStart); if (sb.full.length > 200) sb.full.shift();
 }
 
-let liveT = 0;
-function liveSentence(ev: Evaluation) {
-  const analyst = document.body.dataset.mode === "analyst";
-  const n = ev.actions.length;
-  if (ev.legality.length) return "Not a legal setup yet. Separate the players, or give an attacker the ball.";
-  if (n === 0) return "Recomputed. No legal action from this spot.";
-  return analyst
-    ? `Recomputed ${n} action${n === 1 ? "" : "s"} in ${ev.ms.toFixed(2)} ms`
-    : `Recomputed ${n} action${n === 1 ? "" : "s"}`;
-}
-function markLive(ev: Evaluation, flash = true) {
-  const live = $("#sb-live");
-  const text = $("#sb-live-text");
-  if (!live || !text) return;
-  text.textContent = liveSentence(ev);
-  if (!flash) return;
-  const wrap = document.querySelector(".sb-wrap");
-  live.classList.add("just");
-  wrap?.classList.add("just");
-  clearTimeout(liveT);
-  liveT = window.setTimeout(() => { live.classList.remove("just"); wrap?.classList.remove("just"); }, 520);
-}
-
 // ---------------- canvas ----------------
 function staticFrame(): Frame {
   const p: Record<string, XY> = {};
@@ -194,24 +163,6 @@ function hit(ex: number, ey: number, pointerType = "mouse"): string | null {
   return best;
 }
 
-function dismissHint() {
-  try { sessionStorage.setItem("otherpitch.sbHint", "1"); } catch { /* private mode */ }
-  const hint = document.querySelector<HTMLElement>("#sb-hint");
-  if (hint) hint.hidden = true;
-}
-function armDrag(e: PointerEvent) {
-  try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
-  document.body.classList.add("is-dragging");
-  canvas().classList.add("dragging");
-  $("#sb-explain").setAttribute("aria-live", "off");
-  if (e.cancelable) e.preventDefault();
-}
-function releaseDrag() {
-  document.body.classList.remove("is-dragging");
-  canvas().classList.remove("dragging");
-  $("#sb-explain").setAttribute("aria-live", "polite");
-}
-
 function onDown(e: PointerEvent) {
   if (!sb.snap) return;
   if (e.cancelable) e.preventDefault();
@@ -221,7 +172,6 @@ function onDown(e: PointerEvent) {
   const inside = x >= VIEW_X0 && x <= 105 && y >= 0 && y <= 68;
   if (sb.tool === "add-def" || sb.tool === "add-att") {
     if (!inside) return;
-    dismissHint();
     const team = sb.tool === "add-def" ? "away" : "home";
     const used = new Set(sb.snap.players.filter((p) => p.team === team).map((p) => p.number));
     let n = 2; while (used.has(n)) n++;
@@ -234,16 +184,15 @@ function onDown(e: PointerEvent) {
   const p = sb.snap.players.find((q) => q.id === id)!;
   if (sb.tool === "remove") {
     if (id === sb.snap.carrier_id) { flash("The ball carrier cannot be removed. Give the ball to someone else first."); return; }
-    dismissHint();
     commit(); sb.snap.players = sb.snap.players.filter((q) => q.id !== id); recompute(); return;
   }
   if (sb.tool === "ball") {
     if (p.team !== "home" || p.role === "GK") { flash("Only an attacking outfield player can have the ball."); return; }
-    dismissHint();
     commit(); sb.snap.carrier_id = id; recompute(true); return;
   }
   try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
   document.body.classList.add("sb-dragging");
+  dismissHint();
   sb.drag = { id, moved: false, start: [p.x, p.y], base: sb.ev };
 }
 
@@ -255,14 +204,13 @@ function onMove(e: PointerEvent) {
   const p = sb.snap.players.find((q) => q.id === sb.drag!.id)!;
   p.x = clamp(x, VIEW_X0 + 0.5, 104.5); p.y = clamp(y, 0.5, 67.5);
   sb.drag.moved = true;
-  if (!sb.dirty) { sb.dirty = true; requestAnimationFrame(() => { sb.dirty = false; if (!sb.drag) return; sb.prev = sb.drag.base ?? sb.prev; recompute(); }); }
+  if (!sb.dirty) { sb.dirty = true; requestAnimationFrame(() => { sb.dirty = false; sb.prev = sb.drag?.base ?? sb.prev; recompute(); }); }
 }
 
 function onUp() {
   document.body.classList.remove("sb-dragging");
   if (!sb.drag) return;
   const d = sb.drag; sb.drag = null;
-  releaseDrag();
   if (d.moved) { sb.prev = d.base; recompute(); } else render();
 }
 
@@ -323,7 +271,7 @@ function renderPanel() {
       <dl class="claims">${claims.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
       <details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
       <p class="fine">${ex.claims.map((c) => `<code>${esc(c.evidence_id)}</code>`).join(" ")}</p></details>
-      <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>` : `<p class="fine">One simulated reading of this state. Analyst shows the outcome tree and the timings.</p>`}
+      <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>
       <button class="btn ghost" type="button" data-sbact="play">Play this branch</button>`
       : `<p class="warn">Explanation withheld: QA failed (${esc(ex.qa.join("; "))}).</p>`;
   }
@@ -368,6 +316,11 @@ const TOOL_HINT: Record<Tool, string> = {
   remove: "Tap a player to remove them. Give the ball away before removing the carrier.",
 };
 const HINT_KEY = "otherpitch.sandbox.hint";
+function dismissHint() {
+  try { localStorage.setItem(HINT_KEY, "1"); } catch { /* ignore */ }
+  const n = $("#sb-hint");
+  if (n) n.hidden = true;
+}
 function syncHint() {
   let seen = false;
   try { seen = localStorage.getItem(HINT_KEY) === "1"; } catch { /* private mode: keep the hint */ }
@@ -409,10 +362,7 @@ export function initSandbox() {
     if (b.dataset.sel) { sb.selected = b.dataset.sel; renderPanel(); render(); }
     if (b.dataset.tool) { sb.tool = b.dataset.tool as Tool; syncTool(); }
     switch (b.dataset.sbact) {
-      case "dismiss-hint":
-        try { localStorage.setItem(HINT_KEY, "1"); } catch { /* ignore */ }
-        $("#sb-hint").hidden = true;
-        break;
+      case "dismiss-hint": dismissHint(); break;
       case "random": randomize(); break;
       case "reset-params": commit(); sb.params = { ...DEFAULT_PARAMS }; syncSliders(); recompute(); break;
       case "play": if (sb.selected && sb.ev) { sb.anim = { frames: sb.ev.branches[sb.selected].frames, start: performance.now() }; cancelAnimationFrame(sb.raf); render(); } break;

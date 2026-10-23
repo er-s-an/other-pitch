@@ -69,7 +69,7 @@ body[data-phase="decide"] #pitch { cursor: pointer; }
 .legend .k-tgt { border: 2px dashed var(--you); }
 
 .side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.scene-kicker { margin: 0; font: 800 1.5rem/1 var(--display); text-transform: uppercase; letter-spacing: 0.01em; }
+.scene-kicker { margin: 0; font: 800 1.9rem/1 var(--display); text-transform: uppercase; }
 .scene-brief { margin: 0 0 6px; color: var(--muted); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
 .card h3 { margin: 4px 0 8px; font-size: 1.28rem; line-height: 1.25; }
@@ -111,9 +111,7 @@ body[data-mode="analyst"] .mtable { font-size: 0.75rem; margin-top: 4px; }
 body[data-mode="analyst"] .tree { font-size: 0.75rem; }
 body[data-mode="analyst"] .card h3 { margin-bottom: 4px; }
 .fine { font-size: 0.82rem; color: var(--muted); }
-.table-scroll { overflow-x: auto; margin: 8px 0 12px; }
 .mtable { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 8px 0 12px; font-variant-numeric: tabular-nums; }
-.table-scroll .mtable { margin: 0; min-width: 460px; }
 .mtable th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); padding: 4px 4px; }
 .mtable td { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; }
 .mtable td small { display: block; color: var(--muted); font-size: 0.7rem; }
@@ -153,12 +151,7 @@ body[data-mode="analyst"] .card h3 { margin-bottom: 4px; }
 .diag-label { color: var(--def); font-weight: 600; }
 .errs { color: var(--def); font-size: 0.8rem; }
 .foot { margin-top: 20px; }
-.noscript { margin: 0; padding: 14px 18px; background: var(--you); color: #18140a; font-weight: 600; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #0b1a14; padding: 10px 16px; border-radius: 8px; font-weight: 600; max-width: min(92vw, 560px); z-index: 10; }
-body[data-mode="casual"] .card.result .why { font-size: 1.05rem; }
-body[data-mode="casual"] .metric dd { font-size: 2.4rem; }
-body[data-mode="analyst"] .card.result { display: grid; gap: 2px; }
-body[data-mode="analyst"] .tree { margin-top: 4px; }
 
 @media (max-width: 980px) {
   .game { grid-template-columns: 1fr; }
@@ -247,14 +240,13 @@ body.sb-dragging #sb-pitch { cursor: grabbing; }
 #sb-params label { display: grid; gap: 4px; font-size: 0.85rem; }
 #sb-params label span { display: flex; justify-content: space-between; color: var(--muted); }
 #sb-params b { color: var(--ink); font-variant-numeric: tabular-nums; }
-#sb-params input { width: 100%; accent-color: var(--you); min-height: 44px; }
+#sb-params input { width: 100%; accent-color: var(--you); min-height: 28px; }
 @media (max-width: 980px) {
   .sandbox { grid-template-columns: 1fr; }
   .sb-stage { position: sticky; top: 0; z-index: 3; background: var(--night); padding-bottom: 4px; }
   .sb-stage > .fine:last-child, .sb-head .ask { display: none; }
   .hint { align-items: stretch; flex-direction: column; }
   .sb-wrap { max-height: 46vh; }
-  .sb-hint { flex-direction: column; align-items: stretch; }
 }
 #sb-pitch { width: 100%; height: 100%; display: block; touch-action: none; }
 body[data-mode="casual"] #sb-perf .tech,
@@ -272,11 +264,5 @@ body[data-mode="casual"] #sb-explain .claims { grid-template-columns: 1fr; }
 @media (max-width: 560px) {
   .top { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
   .topnav { gap: 8px; width: 100%; justify-content: space-between; }
-  .seg button { padding: 8px 10px; font-size: 0.82rem; }
-  .stage-cta .btn.primary { flex: 1 1 100%; }
-  .tools { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
-  .app-seg .cue { margin-left: 4px; padding: 0 4px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sb-live.just .pip { animation: none; }
+  .seg button { padding: 7px 11px; }
 }

@@ -41,12 +41,6 @@
           </div>
           <p class="badge">Synthetic scenario</p>
           <p class="variant-tag" id="variant-tag" hidden></p>
-          <div class="pitch-status" id="pitch-status" role="status"><p>Loading the first play…</p></div>
-        </div>
-        <div class="stage-cta" id="stage-cta" hidden>
-          <button class="btn primary" type="button" data-act="start">Start the play</button>
-          <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
-          <button class="btn ghost" type="button" data-act="edit">Edit this play</button>
         </div>
         <div class="stage-foot">
           <p id="t-rel">Decision moment · t = 0.0 s</p>
@@ -97,8 +91,7 @@
         </div>
         <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p><p class="live-pip" id="sb-live" aria-live="polite"></p></div>
         <p class="fine" id="sb-perf"></p>
-        <p class="legend sb-legend"><span><i class="k-ball"></i>Ball carrier</span><span><i class="k-you"></i>Selected</span><span><i class="k-other"></i>Other branches</span><span><i class="k-off"></i>Offside</span><span><i class="k-def"></i>Key defender</span></p>
-        <p class="fine sb-note">Arrows show each attacker's current run. The ice line is offside (second-last defender); receivers beyond it are not offered. Dashed lines are other branches; the solid line is selected.</p>
+        <p class="fine">Arrows show each attacker's current run. The dotted vertical line is the offside line (second-last defender); receivers beyond it are not offered. Faint dashed lines are every candidate branch; the solid one is selected.</p>
       </section>
       <aside class="side sb-side">
         <p class="scene-kicker" id="sb-source">Sandbox</p>
@@ -162,7 +155,6 @@
       <p class="fine foot">Engine <span id="engine"></span>. Fictional data. Built for the Microsoft × Premier League Inside the Game hackathon. Source: <a href="https://github.com/er-s-an/other-pitch">github.com/er-s-an/other-pitch</a>.</p>
     </section>
     <p class="toast" id="toast" role="status" hidden></p>
-    <noscript><p class="noscript">Other Pitch needs JavaScript. The replay and the sandbox both run in your browser.</p></noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
