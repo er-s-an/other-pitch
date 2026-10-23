@@ -91,34 +91,66 @@ export interface DrawInput {
 
 function playerDisc(ctx: CanvasRenderingContext2D, l: Layout, info: PlayerInfo, at: XY, ring: string | null) {
   const [x, y] = px(l, at[0], at[1]);
-  const r = Math.max(7.5, l.s * 1.05);
-  ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r, r * 0.35, 0, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fill();
+  const r = Math.max(11, Math.min(18, l.s * 1.28));
+  ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r, r * 0.35, 0, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fill();
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = info.team === "home" ? HOME : AWAY; ctx.fill();
-  ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
+  ctx.lineWidth = 1.6; ctx.strokeStyle = "rgba(0,0,0,0.65)"; ctx.stroke();
   if (info.team === "away") { // away: square notch so teams differ by shape, not only colour
-    ctx.fillStyle = "#c9463d"; ctx.fillRect(x - r * 0.55, y - r - 1, r * 1.1, r * 0.42);
+    ctx.fillStyle = "#c9463d"; ctx.fillRect(x - r * 0.55, y - r - 1.5, r * 1.1, r * 0.38);
   }
-  if (ring) { ctx.beginPath(); ctx.arc(x, y, r + 4.5, 0, Math.PI * 2); ctx.strokeStyle = ring; ctx.lineWidth = 2.4; ctx.stroke(); }
+  if (ring === "carrier") {
+    ctx.beginPath(); ctx.arc(x, y, r + 6.5, 0, Math.PI * 2); ctx.strokeStyle = YOU; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r + 2.6, 0, Math.PI * 2); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.6; ctx.stroke();
+  } else if (ring) {
+    ctx.beginPath(); ctx.arc(x, y, r + 5.5, 0, Math.PI * 2); ctx.strokeStyle = ring; ctx.lineWidth = ring === "#E8574C" ? 3.2 : 2.8; ctx.stroke();
+  }
   ctx.fillStyle = info.team === "home" ? HOME_INK : AWAY_INK;
-  ctx.font = `700 ${Math.max(9, Math.round(r * 0.95))}px "Public Sans", sans-serif`;
+  ctx.font = `700 ${Math.max(11, Math.round(r * 0.92))}px "Public Sans", sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(String(info.number), x, y + 0.5);
 }
 
-function tag(ctx: CanvasRenderingContext2D, l: Layout, at: XY, text: string, color: string, below = false) {
-  const [cx0, y0] = px(l, at[0], at[1]);
-  const fs = Math.max(10, Math.min(13, l.s * 1.45));
+interface Box { x: number; y: number; w: number; h: number }
+interface TagItem { at: XY; text: string; color: string; below?: boolean }
+const overlaps = (a: Box, b: Box, gap = 4) => a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
+
+function drawTags(ctx: CanvasRenderingContext2D, l: Layout, items: TagItem[], reserved: Box[]) {
+  const occupied = reserved.slice();
+  const fs = Math.max(11, Math.min(13, l.s * 1.45));
   ctx.font = `600 ${fs}px "Public Sans", sans-serif`;
-  const w = ctx.measureText(text).width + 12, h = fs + 9;
-  const y = below ? y0 + l.s * 1.6 + 4 : y0 - l.s * 1.6 - h - 4;
-  let x = cx0 - w / 2;
-  x = Math.max(4, Math.min(l.w - w - 4, x));
-  ctx.fillStyle = "rgba(6,12,10,0.86)";
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill();
-  ctx.fillStyle = color; ctx.fillRect(x, y, 3, h);
-  ctx.fillStyle = "#F3F0E7"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  ctx.fillText(text, x + 8, y + h / 2 + 0.5);
+  for (const item of items) {
+    if (!item.text) continue;
+    const [cx0, y0] = px(l, item.at[0], item.at[1]);
+    const w = Math.min(l.w - 8, ctx.measureText(item.text).width + 14);
+    const h = fs + 8;
+    let below = !!item.below;
+    let y = below ? y0 + l.s * 1.85 + 2 : y0 - l.s * 1.85 - h - 2;
+    const x = Math.max(4, Math.min(l.w - w - 4, cx0 - w / 2));
+    let box: Box = { x, y, w, h };
+    for (let n = 0; n < 10 && occupied.some((o) => overlaps(box, o)); n++) {
+      if (!below && box.y - (h + 3) >= 4) box = { ...box, y: box.y - (h + 3) };
+      else { below = true; box = { ...box, y: Math.min(l.h - h - 4, box.y + h + 3) }; }
+    }
+    for (let n = 0; n < 6 && occupied.some((o) => overlaps(box, o)); n++) {
+      const next = box.x + 14;
+      box = { ...box, x: next + w > l.w - 4 ? Math.max(4, box.x - 14) : next };
+    }
+    occupied.push(box);
+    ctx.fillStyle = "rgba(6,12,10,0.9)";
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 4); ctx.fill();
+    ctx.fillStyle = item.color; ctx.fillRect(box.x, box.y, 3, box.h);
+    ctx.fillStyle = "#F3F0E7"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(item.text, box.x + 8, box.y + box.h / 2 + 0.5);
+  }
+}
+
+function ballGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.beginPath(); ctx.arc(x, y + 1.5, r + 2.2, 0, Math.PI * 2); ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r + 1.6, 0, Math.PI * 2); ctx.fillStyle = "#14160f"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = "#f4f1e6"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r * 0.42, 0, Math.PI * 2); ctx.fillStyle = "#16181c"; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.lineWidth = Math.max(1.25, r * 0.14); ctx.strokeStyle = "#121410"; ctx.stroke();
 }
 
 export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
@@ -158,16 +190,26 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
       ctx.restore();
     }
   }
-  for (const t of d.targets ?? []) {
-    const [x, y] = px(l, ...t.at);
-    ctx.beginPath(); ctx.arc(x, y, t.hot ? 15 : 12, 0, Math.PI * 2);
-    ctx.strokeStyle = t.hot ? YOU : "rgba(245,197,66,0.75)"; ctx.lineWidth = t.hot ? 3 : 1.8; ctx.setLineDash(t.hot ? [] : [4, 4]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = YOU; ctx.fill();
-  }
+  const reserved: Box[] = [];
+  const [capX, capY] = px(l, VIEW_X0 + 1.5, 3.2);
+  reserved.push({ x: capX - 6, y: capY - 14, w: Math.min(300, l.w * 0.58), h: 26 });
+  const [atkX, atkY] = px(l, L - 30, 3.2);
+  reserved.push({ x: atkX - 6, y: atkY - 14, w: 150, h: 26 });
   if (d.offsideX != null) {
     const [ox, oy0] = px(l, d.offsideX, 0), [, oy1] = px(l, d.offsideX, W);
-    ctx.save(); ctx.setLineDash([2, 6]); ctx.strokeStyle = "rgba(242,238,227,0.35)"; ctx.lineWidth = 1;
+    ctx.save(); ctx.setLineDash([]); ctx.strokeStyle = "rgba(143,211,232,0.22)"; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1); ctx.stroke();
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = "#b7e7f4"; ctx.lineWidth = 1.75;
     ctx.beginPath(); ctx.moveTo(ox, oy0); ctx.lineTo(ox, oy1); ctx.stroke(); ctx.restore();
+    const label = "OFFSIDE";
+    ctx.font = `700 ${Math.max(10, Math.min(12, l.s * 1.2))}px "Public Sans", sans-serif`;
+    const tw = ctx.measureText(label).width + 10, th = 16;
+    let lx = ox + 6; if (lx + tw > l.w - 6) lx = ox - tw - 6;
+    const ly = Math.min(oy1 - th - 8, oy0 + 36);
+    ctx.fillStyle = "rgba(6,14,18,0.88)"; ctx.beginPath(); ctx.roundRect(lx, ly, tw, th, 3); ctx.fill();
+    ctx.fillStyle = "#d7f3fb"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(label, lx + 5, ly + th / 2 + 0.5);
+    reserved.push({ x: lx, y: ly, w: tw, h: th });
   }
   for (const a of d.arrows ?? []) {
     const [x1, y1] = px(l, ...a.at), [x2, y2] = px(l, a.at[0] + a.v[0] * 1.2, a.at[1] + a.v[1] * 1.2);
@@ -178,20 +220,34 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
     ctx.fillStyle = "rgba(242,238,227,0.45)"; ctx.fill(); ctx.restore();
   }
   const ringFor = new Map(d.highlights.map((h) => [h.id, "#E8574C"]));
-  if (d.selected) ringFor.set(d.selected, YOU);
-  ringFor.set(d.carrierId, "#F3F0E7");
+  if (d.selected && d.selected !== d.carrierId) ringFor.set(d.selected, YOU);
+  ringFor.set(d.carrierId, "carrier");
   for (const info of d.players) {
     const at = d.frame.p[info.id];
     if (at) playerDisc(ctx, l, info, at, ringFor.get(info.id) ?? null);
   }
-  // ball
-  const [bx, by] = px(l, ...d.frame.ball), br = Math.max(4.5, l.s * 0.62);
-  ctx.beginPath(); ctx.arc(bx, by, br + 2.5, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fill();
-  ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = "#FFFFFF"; ctx.fill();
-  ctx.lineWidth = 1.4; ctx.strokeStyle = "#0b0c0a"; ctx.stroke();
-  for (const h of d.highlights) { const at = d.frame.p[h.id]; if (at && h.label) tag(ctx, l, at, h.label, "#E8574C", true); }
-  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) tag(ctx, l, end, r.label, r.color); }
-  for (const t of d.targets ?? []) tag(ctx, l, t.at, t.label, YOU, t.below);
+  const [bx, by] = px(l, ...d.frame.ball), br = Math.max(6.2, l.s * 0.78);
+  for (const r of d.routes) {
+    if (r.dashed || r.points.length < 3) continue;
+    const tail = r.points.slice(-7, -1);
+    tail.forEach((p, i) => {
+      const [tx, ty] = px(l, p[0], p[1]);
+      ctx.beginPath(); ctx.arc(tx, ty, br * (0.45 + i / tail.length * 0.35), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(244,241,230,${0.08 + (i / tail.length) * 0.28})`; ctx.fill();
+    });
+  }
+  ballGlyph(ctx, bx, by, br);
+  for (const t of d.targets ?? []) {
+    const [x, y] = px(l, ...t.at);
+    ctx.beginPath(); ctx.arc(x, y, t.hot ? 22 : 18, 0, Math.PI * 2);
+    ctx.strokeStyle = t.hot ? YOU : "rgba(245,197,66,0.9)"; ctx.lineWidth = t.hot ? 3 : 2; ctx.setLineDash(t.hot ? [] : [5, 4]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2); ctx.fillStyle = YOU; ctx.fill();
+  }
+  const tags: TagItem[] = [];
+  for (const h of d.highlights) { const at = d.frame.p[h.id]; if (at && h.label) tags.push({ at, text: h.label, color: "#E8574C", below: true }); }
+  for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) tags.push({ at: end, text: r.label, color: r.color }); }
+  for (const t of d.targets ?? []) tags.push({ at: t.at, text: t.label, color: YOU, below: t.below });
+  drawTags(ctx, l, tags, reserved);
   if (d.caption) {
     ctx.font = `600 ${Math.max(10, l.s * 1.3)}px "Public Sans", sans-serif`;
     ctx.fillStyle = "rgba(240,236,224,0.8)"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
@@ -199,9 +255,9 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   }
 }
 
-export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
+export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number, pad = 36): string | null {
   const l = layoutOf(canvas.clientWidth, canvas.clientHeight);
-  let best: string | null = null, bd = 26;
+  let best: string | null = null, bd = pad;
   for (const t of targets) { const [x, y] = px(l, ...t.at); const d = Math.hypot(x - ex, y - ey); if (d < bd) { bd = d; best = t.id; } }
   return best;
 }

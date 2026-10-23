@@ -76,16 +76,19 @@ function render() {
     routes.push({ points: ballPath(state.frames, state.t), color: mine ? YOU : OTHER, dashed: !mine,
       label: `${roleOf(state.view)} \u00b7 Simulated` });
   }
-  const key = b.key_defender_ids;
   const iv = b.intervention;
   if (iv) highlights.push({ id: iv.subject_id, label: `${surname(iv.subject_id)} \u00b7 moved`, ghostFrom: iv.field_changes[0].before as XY });
-  if (state.phase === "result" && state.view) {
+  for (const k of b.key_defender_ids) {
+    if (!highlights.some((h) => h.id === k)) highlights.push({ id: k, label: state.phase === "intro" ? "Key defender" : "" });
+  }
+  if ((state.phase === "result" || state.phase === "branch") && state.view) {
     const br = branch(state.view);
     const blocker = br.inputs.blocking_defender_id as string | undefined;
-    if (blocker && !highlights.some((h) => h.id === blocker) && (br.metrics.p_lose_possession >= 0.3 || state.mode === "analyst"))
-      highlights.push({ id: blocker, label: surname(blocker) });
-  } else if (state.mode === "analyst") {
-    for (const k of key) if (!highlights.some((h) => h.id === k)) highlights.push({ id: k, label: "" });
+    if (blocker && (br.metrics.p_lose_possession >= 0.3 || state.mode === "analyst")) {
+      const named = highlights.find((h) => h.id === blocker);
+      if (named) { if (!named.label) named.label = surname(blocker); }
+      else highlights.push({ id: blocker, label: surname(blocker) });
+    }
   }
   let laneBand = null as null | { from: XY; to: XY };
   let zones: Array<{ at: XY; r: number }> = [];
@@ -122,9 +125,31 @@ function play(frames: Frame[], from: number, to: number, done: () => void) {
 }
 
 // ---------------- panels ----------------
+function syncChrome() {
+  const cta = $("#stage-cta");
+  const showCta = !!state.bundle && (state.phase === "intro" || state.phase === "leadin");
+  cta.hidden = !showCta;
+  cta.querySelectorAll<HTMLButtonElement>("[data-act]").forEach((b) => {
+    b.hidden = state.phase === "leadin" ? b.dataset.act !== "skip" : false;
+  });
+  const status = $("#pitch-status");
+  if (state.phase === "error" && !state.frames.length) {
+    status.hidden = false;
+    status.innerHTML = `<p>${esc(state.error || "This play did not load.")}</p><button class="btn primary" type="button" data-act="retry">Retry</button>`;
+    return;
+  }
+  if (!state.bundle || !state.frames.length) {
+    status.hidden = false;
+    status.innerHTML = "<p>Loading the first play…</p>";
+    return;
+  }
+  status.hidden = true;
+}
+
 function setPhase(p: Phase) {
   state.phase = p;
   document.body.dataset.phase = p;
+  syncChrome();
   renderPanel();
   render();
 }
@@ -152,18 +177,18 @@ function resultCard(): string {
   html += `<h3 class="verdict">${esc(isMine ? text.headline : (e.verdict === "strongest" ? "This route was the strongest here." : text.headline))}</h3>`;
   html += `<p class="why">${esc(text.sentence)}</p>`;
   if (mode === "casual") {
-    html += `<dl class="metrics">` + e.casual.metric_claim_ids.map((cid) => {
+    html += `<dl class="metrics">` + e.casual.metric_claim_ids.slice(0, 2).map((cid) => {
       const c = claim(e, cid);
       const hint = c.metric_name === "opportunity_value" ? "Synthetic chance score for the next 8 s. Not a goal probability." : "Internal estimate that the first pass arrives.";
       return metricRow(c.label, c.display_value, hint);
     }).join("") + `</dl>`;
     html += `<p class="fine">${esc(e.casual.uncertainty)} Synthetic scenario.</p>`;
   } else {
-    html += `<table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Shot quality</th><th>Opportunity</th></tr></thead><tbody>`;
+    html += `<div class="table-scroll"><table class="mtable"><thead><tr><th>Action</th><th>Completion</th><th>Possession risk</th><th>Shot quality</th><th>Opportunity</th></tr></thead><tbody>`;
     for (const x of b.branches) {
       html += `<tr class="${x.action_id === id ? "on" : ""}"><td>${esc(x.label)}<small>${esc(roleOf(x.action_id))}</small></td><td>${pct(x.metrics.p_complete)}</td><td>${pct(x.metrics.p_lose_possession)}</td><td>${score(x.metrics.q_shot)}</td><td><b>${score(x.metrics.opportunity_value)}</b></td></tr>`;
     }
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
     html += `<h4>Outcome tree \u00b7 ${esc(br.label)}</h4><ul class="tree">` + br.outcome_tree.leaves.map((l) =>
       `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("") + `</ul>`;
     const inp = br.inputs;
@@ -223,9 +248,11 @@ function renderPanel() {
   if (state.phase === "intro") {
     panel.append(el("div", "card intro", `<p class="kicker">${state.round === 0 && !state.challenge ? "Your call" : "Next play"}</p>
       <h3>${esc(b.tactic)}</h3>
-      <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The ball carrier has a white ring.</p>
+      <p>Watch three seconds, then pick a pass or a shot for ${esc(surname(b.carrier_id))}. Amber ring: ball carrier. Red ring: key defender.</p>
       <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
-      <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button></div>`));
+      <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
+      <button class="btn ghost" type="button" data-act="edit">Edit this play</button></div>
+      <p class="fine">Sandbox lets you drag these players. Rankings recompute in your browser.</p>`));
   } else if (state.phase === "leadin") {
     panel.append(el("div", "card", `<p class="kicker">Approach</p><h3>Watch the runs.</h3><button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>`));
   } else if (state.phase === "decide") {
@@ -429,7 +456,7 @@ document.addEventListener("click", (ev) => {
   if (t.dataset.pick) choose(t.dataset.pick);
   else if (t.dataset.view) { state.phase = "result"; void showView(t.dataset.view); }
   else if (t.dataset.variant) void setVariant(t.dataset.variant);
-  else if (t.dataset.mode) { state.mode = t.dataset.mode as Mode; document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode))); save(); renderPanel(); render(); }
+  else if (t.dataset.mode) { state.mode = t.dataset.mode as Mode; document.body.dataset.mode = state.mode; document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode))); save(); renderPanel(); render(); if (document.body.dataset.app === "sandbox") showSandbox(); }
   else switch (t.dataset.act) {
     case "start": startLeadin(); break;
     case "skip": state.token++; state.t = 0; setPhase("decide"); break;
@@ -442,18 +469,30 @@ document.addEventListener("click", (ev) => {
       else { state.round = ROUNDS.length; save(); setPhase("recap"); }
       break;
     case "restart": localStorage.removeItem(STORE); state.round = 0; state.rounds = []; void beginRound(); break;
-    case "retry": void beginRound(); break;
+    case "retry": void retryLoad(); break;
     case "diag": void runDiagnostic(); break;
-    case "edit": sbLoad(state.bundle!.scene_id, state.bundle!.variant_id); setApp("sandbox"); break;
+    case "edit": if (state.bundle) { sbLoad(state.bundle.scene_id, state.bundle.variant_id); setApp("sandbox"); } break;
   }
 });
 
 canvas.addEventListener("click", (ev) => {
   if (state.phase !== "decide" || !state.bundle) return;
   const r = canvas.getBoundingClientRect();
-  const id = hitTarget(canvas, state.bundle.branches.map((b) => ({ id: b.action_id, at: (b.type === "shot" ? [103, 34] : b.target) as XY })), ev.clientX - r.left, ev.clientY - r.top);
+  const pad = window.matchMedia("(pointer: coarse)").matches ? 48 : 36;
+  const id = hitTarget(canvas, state.bundle.branches.map((b) => ({ id: b.action_id, at: (b.type === "shot" ? [103, 34] : b.target) as XY })), ev.clientX - r.left, ev.clientY - r.top, pad);
   if (id) choose(id);
 });
+
+async function retryLoad() {
+  $("#pitch-status").hidden = false;
+  $("#pitch-status").innerHTML = "<p>Loading the first play…</p>";
+  if (!state.catalog) {
+    try { state.catalog = await getJSON<Catalog>("scenes.json"); }
+    catch (e) { state.error = `Scene catalogue did not load (${(e as Error).message}).`; setPhase("error"); return; }
+    $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;
+  }
+  await beginRound();
+}
 
 new ResizeObserver(() => render()).observe(canvas);
 
@@ -495,6 +534,7 @@ async function boot() {
       if (saved && Array.isArray(saved.rounds)) { state.rounds = saved.rounds; state.round = Math.min(saved.round, ROUNDS.length); state.mode = saved.mode ?? "casual"; }
     } catch { /* ignore */ }
   }
+  document.body.dataset.mode = state.mode;
   document.querySelectorAll("[data-mode]").forEach((m) => m.setAttribute("aria-pressed", String((m as HTMLElement).dataset.mode === state.mode)));
   void loadHeldout();
   if (state.round >= ROUNDS.length && !state.challenge) { state.round = ROUNDS.length - 1; await beginRound(); state.round = ROUNDS.length; setPhase("recap"); return; }

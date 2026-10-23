@@ -9,6 +9,14 @@ const SCENES = (scenariosJson as unknown as { scenes: Record<string, Snapshot & 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
+const TOOL_HINT: Record<Tool, string> = {
+  move: "Drag any player. Rankings recompute while you drag.",
+  ball: "Tap an attacker to give them the ball.",
+  "add-def": "Tap open grass to add a defender.",
+  "add-att": "Tap open grass to add an attacker.",
+  remove: "Tap a player to remove them. Give the ball away before removing the carrier.",
+};
+
 const SLIDERS: Array<{ key: keyof Params; label: string; min: number; max: number; step: number; unit: string }> = [
   { key: "DEF_SPEED", label: "Defender speed", min: 3, max: 9, step: 0.5, unit: "m/s" },
   { key: "DEF_REACTION_S", label: "Defender reaction delay", min: 0, max: 1.2, step: 0.1, unit: "s" },
@@ -70,7 +78,31 @@ function recompute(resetSel = false) {
   if (resetSel || !sb.selected || !ev.branches[sb.selected]) sb.selected = ev.ranking[0] ?? null;
   sb.anim = null;
   renderPanel(); render();
+  markLive(ev);
   sb.full.push(performance.now() - tStart); if (sb.full.length > 200) sb.full.shift();
+}
+
+let liveT = 0;
+function liveSentence(ev: Evaluation) {
+  const analyst = document.body.dataset.mode === "analyst";
+  const n = ev.actions.length;
+  if (ev.legality.length) return "Not a legal setup yet. Separate the players, or give an attacker the ball.";
+  if (n === 0) return "Recomputed. No legal action from this spot.";
+  return analyst
+    ? `Recomputed ${n} action${n === 1 ? "" : "s"} in ${ev.ms.toFixed(2)} ms`
+    : `Recomputed ${n} action${n === 1 ? "" : "s"}`;
+}
+function markLive(ev: Evaluation, flash = true) {
+  const live = $("#sb-live");
+  const text = $("#sb-live-text");
+  if (!live || !text) return;
+  text.textContent = liveSentence(ev);
+  if (!flash) return;
+  const wrap = document.querySelector(".sb-wrap");
+  live.classList.add("just");
+  wrap?.classList.add("just");
+  clearTimeout(liveT);
+  liveT = window.setTimeout(() => { live.classList.remove("just"); wrap?.classList.remove("just"); }, 520);
 }
 
 // ---------------- canvas ----------------
@@ -102,7 +134,7 @@ function render() {
       const b = ev.branches[sb.selected], a = ev.actions.find((x) => x.action_id === sb.selected)!;
       routes.push({ points: b.frames.map((f) => f.ball), color: sb.selected === best ? YOU : OTHER, dashed: false, label: a.label, width: 3.6 });
       const blocker = b.inputs.blocking_defender_id as string | undefined;
-      if (blocker) highlights.push({ id: blocker, label: "" });
+      if (blocker) highlights.push({ id: blocker, label: "Key defender" });
       if (a.type === "pass") laneBand = { from: frame.ball, to: a.target };
     }
   } else if (ev && sb.anim && sb.selected) {
@@ -123,24 +155,47 @@ function render() {
   }
 }
 
-function hit(ex: number, ey: number): string | null {
+function reachPx(pointerType: string) {
+  return pointerType === "touch" || window.matchMedia("(pointer: coarse)").matches ? 48 : 32;
+}
+function hit(ex: number, ey: number, pointerType = "mouse"): string | null {
   const [x, y] = toPitch(canvas(), ex, ey);
-  const rad = Math.max(2.2, 26 / pxPerMetre(canvas()));
+  const rad = Math.max(2.6, reachPx(pointerType) / Math.max(1, pxPerMetre(canvas())));
   let best: string | null = null, bd = rad;
   for (const p of sb.snap!.players) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.id; } }
   const c = sb.snap!.players.find((p) => p.id === sb.snap!.carrier_id);
-  if (c && Math.hypot(c.x + 0.6 - x, c.y - y) < bd * 0.6) best = c.id;
+  if (c && Math.hypot(c.x + 0.6 - x, c.y - y) < bd * 0.55) best = c.id;
   return best;
+}
+
+function dismissHint() {
+  try { sessionStorage.setItem("otherpitch.sbHint", "1"); } catch { /* private mode */ }
+  const hint = document.querySelector<HTMLElement>("#sb-hint");
+  if (hint) hint.hidden = true;
+}
+function armDrag(e: PointerEvent) {
+  try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
+  document.body.classList.add("is-dragging");
+  canvas().classList.add("dragging");
+  $("#sb-explain").setAttribute("aria-live", "off");
+  if (e.cancelable) e.preventDefault();
+}
+function releaseDrag() {
+  document.body.classList.remove("is-dragging");
+  canvas().classList.remove("dragging");
+  $("#sb-explain").setAttribute("aria-live", "polite");
 }
 
 function onDown(e: PointerEvent) {
   if (!sb.snap) return;
+  if (e.cancelable) e.preventDefault();
   const r = canvas().getBoundingClientRect(), ex = e.clientX - r.left, ey = e.clientY - r.top;
-  const id = hit(ex, ey);
+  const id = hit(ex, ey, e.pointerType);
   const [x, y] = toPitch(canvas(), ex, ey);
   const inside = x >= VIEW_X0 && x <= 105 && y >= 0 && y <= 68;
   if (sb.tool === "add-def" || sb.tool === "add-att") {
     if (!inside) return;
+    dismissHint();
     const team = sb.tool === "add-def" ? "away" : "home";
     const used = new Set(sb.snap.players.filter((p) => p.team === team).map((p) => p.number));
     let n = 2; while (used.has(n)) n++;
@@ -153,30 +208,34 @@ function onDown(e: PointerEvent) {
   const p = sb.snap.players.find((q) => q.id === id)!;
   if (sb.tool === "remove") {
     if (id === sb.snap.carrier_id) { flash("The ball carrier cannot be removed. Give the ball to someone else first."); return; }
+    dismissHint();
     commit(); sb.snap.players = sb.snap.players.filter((q) => q.id !== id); recompute(); return;
   }
   if (sb.tool === "ball") {
     if (p.team !== "home" || p.role === "GK") { flash("Only an attacking outfield player can have the ball."); return; }
+    dismissHint();
     commit(); sb.snap.carrier_id = id; recompute(true); return;
   }
-  try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
+  dismissHint();
+  armDrag(e);
   sb.drag = { id, moved: false, start: [p.x, p.y], base: sb.ev };
-  e.preventDefault();
 }
 
 function onMove(e: PointerEvent) {
   if (!sb.drag || !sb.snap) return;
+  if (e.cancelable) e.preventDefault();
   const r = canvas().getBoundingClientRect();
   const [x, y] = toPitch(canvas(), e.clientX - r.left, e.clientY - r.top);
   const p = sb.snap.players.find((q) => q.id === sb.drag!.id)!;
   p.x = clamp(x, VIEW_X0 + 0.5, 104.5); p.y = clamp(y, 0.5, 67.5);
   sb.drag.moved = true;
-  if (!sb.dirty) { sb.dirty = true; requestAnimationFrame(() => { sb.dirty = false; sb.prev = sb.drag?.base ?? sb.prev; recompute(); }); }
+  if (!sb.dirty) { sb.dirty = true; requestAnimationFrame(() => { sb.dirty = false; if (!sb.drag) return; sb.prev = sb.drag.base ?? sb.prev; recompute(); }); }
 }
 
 function onUp() {
   if (!sb.drag) return;
   const d = sb.drag; sb.drag = null;
+  releaseDrag();
   if (d.moved) { sb.prev = d.base; recompute(); } else render();
 }
 
@@ -200,6 +259,7 @@ function renderPanel() {
   $("#sb-perf").innerHTML = ev ? `Recomputed <b>${ev.actions.length}</b> actions in <b>${ev.ms.toFixed(2)} ms</b> \u00b7 p95 ${p95().toFixed(2)} ms over ${sb.timings.length} updates \u00b7 state <code>${ev.state_hash}</code>` : "";
   const list = $("#sb-rank");
   if (!ev || ev.legality.length) { list.innerHTML = `<p class="warn">Not a legal state: ${esc(ev?.legality.join("; ") ?? "")}</p>`; $("#sb-explain").innerHTML = ""; return; }
+  if (!ev.ranking.length) { list.innerHTML = `<p class="warn">No legal action from this spot. Move an attacker, or give the ball to someone else.</p>`; $("#sb-explain").innerHTML = ""; return; }
   const prev = sb.prev;
   list.innerHTML = ev.ranking.map((id, i) => {
     const b = ev.branches[id], a = ev.actions.find((x) => x.action_id === id)!;
@@ -220,11 +280,14 @@ function renderPanel() {
     const ex = explain(s, ev, sb.selected);
     const b = ev.branches[sb.selected];
     const ok = ex.qa.length === 0;
+    const analyst = document.body.dataset.mode === "analyst";
+    const mine = ex.claims.filter((c) => c.action_id === sb.selected);
+    const shown = analyst ? mine : [mine.find((c) => c.metric === "opportunity_value"), mine.find((c) => c.metric === "p_complete")].filter((c): c is NonNullable<typeof c> => !!c);
     $("#sb-explain").innerHTML = ok ? `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
-      <dl class="claims">${ex.claims.filter((c) => c.action_id === sb.selected).map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
-      <details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
+      <dl class="claims">${shown.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
+      ${analyst ? `<details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
       <p class="fine">${ex.claims.map((c) => `<code>${esc(c.evidence_id)}</code>`).join(" ")}</p></details>
-      <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>
+      <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>` : `<p class="fine">One simulated reading of this state. Analyst shows the outcome tree and the timings.</p>`}
       <button class="btn ghost" type="button" data-sbact="play">Play this branch</button>`
       : `<p class="warn">Explanation withheld: QA failed (${esc(ex.qa.join("; "))}).</p>`;
   }
@@ -261,13 +324,28 @@ export function decodeState(str: string): boolean {
 }
 
 // ---------------- wiring ----------------
+function setTool(tool: Tool) {
+  sb.tool = tool;
+  document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String((x as HTMLElement).dataset.tool === tool)));
+  const cv = canvas();
+  cv.dataset.tool = tool;
+  const hint = $("#sb-toolhint");
+  if (hint) hint.textContent = TOOL_HINT[tool];
+}
+
 export function initSandbox() {
   const cv = canvas();
+  cv.style.touchAction = "none";
   cv.addEventListener("pointerdown", onDown);
   cv.addEventListener("pointermove", onMove);
   cv.addEventListener("pointerup", onUp);
   cv.addEventListener("pointercancel", onUp);
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+  cv.addEventListener("touchmove", (e) => { if (sb.drag && e.cancelable) e.preventDefault(); }, { passive: false });
   new ResizeObserver(() => render()).observe(cv);
+  setTool("move");
   syncSliders();
   $("#sb-params").addEventListener("pointerdown", () => commit());
   $("#sb-params").addEventListener("keydown", () => commit());
@@ -282,8 +360,9 @@ export function initSandbox() {
     const b = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
     if (!b) return;
     if (b.dataset.sel) { sb.selected = b.dataset.sel; renderPanel(); render(); }
-    if (b.dataset.tool) { sb.tool = b.dataset.tool as Tool; document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String((x as HTMLElement).dataset.tool === sb.tool))); cv.dataset.tool = sb.tool; }
+    if (b.dataset.tool) setTool(b.dataset.tool as Tool);
     switch (b.dataset.sbact) {
+      case "dismiss-hint": dismissHint(); break;
       case "random": randomize(); break;
       case "reset-params": commit(); sb.params = { ...DEFAULT_PARAMS }; syncSliders(); recompute(); break;
       case "play": if (sb.selected && sb.ev) { sb.anim = { frames: sb.ev.branches[sb.selected].frames, start: performance.now() }; cancelAnimationFrame(sb.raf); render(); } break;
@@ -298,7 +377,12 @@ export function initSandbox() {
   $<HTMLSelectElement>("#sb-scene").addEventListener("change", (e) => { const [id, v] = (e.target as HTMLSelectElement).value.split(":"); commit(); loadScene(id, v); });
 }
 
-export function showSandbox() { render(); renderPanel(); }
+export function showSandbox() {
+  const hint = document.querySelector<HTMLElement>("#sb-hint");
+  if (hint) { try { hint.hidden = sessionStorage.getItem("otherpitch.sbHint") === "1"; } catch { hint.hidden = false; } }
+  render(); renderPanel();
+  if (sb.ev) markLive(sb.ev, false);
+}
 export function hasState() { return !!sb.snap; }
 export const sandboxState = sb;
 export function sbRecompute() { recompute(true); }

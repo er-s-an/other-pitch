@@ -4,17 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b1a14" />
+    <style>html,body{margin:0;background:#0b1a14;color:#f3f0e7}</style>
     <meta name="description" content="Other Pitch: make the call in a football replay, see your branch, compare the alternative, change one defensive condition." />
     <title>Other Pitch · Your call. Another possibility.</title>
     <link rel="icon" href="/favicon.svg" />
   </head>
-  <body data-phase="intro">
+  <body data-phase="intro" data-mode="casual" data-app="tutorial">
     <header class="top">
       <a class="brand" href="/" aria-label="Other Pitch home"><span>Other</span><span>Pitch</span></a>
       <nav class="topnav">
         <div class="seg app-seg" role="group" aria-label="Mode">
           <button type="button" data-app="tutorial" aria-pressed="true">3 plays</button>
-          <button type="button" data-app="sandbox" aria-pressed="false">Sandbox</button>
+          <button type="button" data-app="sandbox" aria-pressed="false">Sandbox<span class="cue">Drag</span></button>
         </div>
         <div class="seg" role="group" aria-label="View">
           <button type="button" data-mode="casual" aria-pressed="true">Casual</button>
@@ -34,12 +35,18 @@
         </div>
         <div class="pitch-wrap">
           <canvas id="pitch" aria-label="Top-down pitch. Harbour City attack to the right." role="img"></canvas>
-          <p class="badge">Synthetic scenario</p>
+          <p class="badge">Synthetic scenario · 3 plays</p>
           <p class="variant-tag" id="variant-tag" hidden></p>
+          <div class="pitch-status" id="pitch-status" role="status"><p>Loading the first play…</p></div>
+        </div>
+        <div class="stage-cta" id="stage-cta" hidden>
+          <button class="btn primary" type="button" data-act="start">Start the play</button>
+          <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
+          <button class="btn ghost" type="button" data-act="edit">Edit this play</button>
         </div>
         <div class="stage-foot">
           <p id="t-rel">Decision moment · t = 0.0 s</p>
-          <p class="legend"><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-def"></i>Key defender</span></p>
+          <p class="legend"><span><i class="k-ball"></i>Ball carrier</span><span><i class="k-you"></i>Your choice</span><span><i class="k-other"></i>Recorded / another option</span><span><i class="k-def"></i>Key defender</span></p>
         </div>
       </section>
       <aside class="side">
@@ -55,6 +62,7 @@
           <div>
             <p class="round">Sandbox · computed live in your browser</p>
             <h1 class="ask">Change anything.</h1>
+            <p class="task">Drag a player. Rankings recompute on every move.</p>
           </div>
           <label class="sb-load"><span>Start from</span>
             <select id="sb-scene">
@@ -66,15 +74,25 @@
             </select></label>
         </div>
         <div class="seg tools" role="group" aria-label="Edit tool">
-          <button type="button" data-tool="move" aria-pressed="true">Drag</button>
-          <button type="button" data-tool="ball" aria-pressed="false">Give ball</button>
-          <button type="button" data-tool="add-def" aria-pressed="false">+ Defender</button>
-          <button type="button" data-tool="add-att" aria-pressed="false">+ Attacker</button>
-          <button type="button" data-tool="remove" aria-pressed="false">Remove</button>
+          <button type="button" data-tool="move" aria-pressed="true" title="Drag a player. Rankings recompute as you move.">Drag</button>
+          <button type="button" data-tool="ball" aria-pressed="false" title="Tap an attacker to give them the ball.">Give ball</button>
+          <button type="button" data-tool="add-def" aria-pressed="false" title="Tap the pitch to add a defender.">+ Defender</button>
+          <button type="button" data-tool="add-att" aria-pressed="false" title="Tap the pitch to add an attacker.">+ Attacker</button>
+          <button type="button" data-tool="remove" aria-pressed="false" title="Tap a player to remove them.">Remove</button>
         </div>
-        <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p></div>
+        <p class="tool-hint" id="sb-toolhint">Drag any player. Rankings recompute while you drag.</p>
+        <div class="sb-hint" id="sb-hint">
+          <p><strong>Drag a player.</strong> Every move recomputes the ranking in this browser. Nothing is sent to a server.</p>
+          <button class="btn ghost" type="button" data-sbact="dismiss-hint">Got it</button>
+        </div>
+        <div class="pitch-wrap sb-wrap">
+          <canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas>
+          <p class="badge">Synthetic · live model</p>
+        </div>
+        <p class="sb-live" id="sb-live"><span class="pip" id="sb-pip" aria-hidden="true"></span><span id="sb-live-text">Rankings update as you edit.</span></p>
         <p class="fine" id="sb-perf"></p>
-        <p class="fine">Arrows show each attacker's current run. The dotted vertical line is the offside line (second-last defender); receivers beyond it are not offered. Faint dashed lines are every candidate branch; the solid one is selected.</p>
+        <p class="legend sb-legend"><span><i class="k-ball"></i>Ball carrier</span><span><i class="k-you"></i>Selected</span><span><i class="k-other"></i>Other branches</span><span><i class="k-off"></i>Offside</span><span><i class="k-def"></i>Key defender</span></p>
+        <p class="fine sb-note">Arrows show each attacker's current run. The ice line is offside (second-last defender); receivers beyond it are not offered. Dashed lines are other branches; the solid line is selected.</p>
       </section>
       <aside class="side sb-side">
         <p class="scene-kicker" id="sb-source">Sandbox</p>
@@ -83,7 +101,7 @@
           <button class="btn ghost" type="button" data-sbact="share">Copy link to this setup</button>
         </div>
         <div class="card"><p class="kicker">Ranking by opportunity quality</p>
-          <div class="rank-head"><span></span><span>Action</span><span>Opportunity</span><span>Completion</span><span>Risk</span></div>
+          <div class="rank-head" id="sb-rankhead"><span></span><span>Action</span><span>Opportunity</span><span>Completion</span><span>Risk</span></div>
           <div id="sb-rank"></div>
           <p class="fine">Deltas compare with the state before your last change.</p>
         </div>
@@ -138,6 +156,7 @@
       <p class="fine foot">Engine <span id="engine"></span>. Fictional data. Built for the Microsoft × Premier League Inside the Game hackathon. Source: <a href="https://github.com/er-s-an/other-pitch">github.com/er-s-an/other-pitch</a>.</p>
     </section>
     <p class="toast" id="toast" role="status" hidden></p>
+    <noscript><p class="noscript">Other Pitch needs JavaScript. The replay and the sandbox both run in your browser.</p></noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
