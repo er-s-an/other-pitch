@@ -412,7 +412,7 @@ export function initSandbox() {
       case "play": if (sb.selected && sb.ev) { sb.anim = { frames: sb.ev.branches[sb.selected].frames, start: performance.now() }; cancelAnimationFrame(sb.raf); render(); } break;
       case "share": {
         const u = new URL(location.origin + location.pathname); u.searchParams.set("sb", encodeState());
-        navigator.clipboard?.writeText(u.toString()).then(() => flash("Sandbox link copied. It encodes every position and parameter."), () => prompt("Copy this link", u.toString()));
+        navigator.clipboard?.writeText(u.toString()).then(() => flash("Sandbox link copied. Anyone with it gets this exact setup and parameters."), () => prompt("Copy this link", u.toString()));
         history.replaceState(null, "", u.toString());
         break;
       }

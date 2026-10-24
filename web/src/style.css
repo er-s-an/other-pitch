@@ -59,7 +59,7 @@ body[data-phase="decide"] #pitch { cursor: pointer; }
 .pitch-status { position: absolute; inset: 0; z-index: 3; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; background: rgba(11, 26, 20, 0.9); }
 .pitch-status[hidden] { display: none; }
 .pitch-status p { margin: 0; font-weight: 600; max-width: 32ch; }
-.busy { margin: 0; padding: 8px 12px; border-radius: 8px; background: rgba(245, 197, 66, 0.14); color: var(--you); font-size: 0.86rem; font-weight: 600; }
+.busy { margin: 0; padding: 10px 12px; border-radius: 8px; background: rgba(245, 197, 66, 0.18); color: var(--you); font-size: 0.88rem; font-weight: 700; border: 1px solid rgba(245, 197, 66, 0.35); }
 .busy[hidden] { display: none; }
 .variant-tag { left: 50%; transform: translateX(-50%); top: 8px; white-space: nowrap; color: var(--def); border-left: 3px solid var(--def); }
 .stage-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; margin-top: 10px; color: var(--muted); font-size: 0.86rem; }
@@ -154,6 +154,24 @@ body[data-mode="analyst"] .claims dd { font-size: 1.35rem; }
 .condition .seg button { border-radius: 10px; min-height: 44px; }
 .condition .seg button[aria-pressed="true"]:last-child { background: var(--def); color: #1a0806; }
 .delta { background: rgba(232,87,76,0.12); border-left: 3px solid var(--def); padding: 8px 10px; border-radius: 4px; font-size: 0.9rem; }
+.delta.delta-flip { background: rgba(245,197,66,0.16); border-left-color: var(--you); }
+.delta.delta-flip .rank-line { color: var(--you); font-weight: 700; }
+.delta.delta-in { animation: deltaIn 420ms ease; }
+@keyframes deltaIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.condition-lead { margin: 4px 0 0 !important; }
+.condition.condition-wow .seg button[aria-pressed="true"] { box-shadow: 0 0 0 2px rgba(232,87,76,0.55); }
+.pitch-wrap.condition-flash { animation: conditionFlash 820ms ease; }
+@keyframes conditionFlash {
+  0% { box-shadow: 0 0 0 0 rgba(232,87,76,0), 0 30px 80px -30px rgba(0,0,0,0.8); }
+  35% { box-shadow: 0 0 0 3px rgba(232,87,76,0.9), 0 30px 80px -30px rgba(0,0,0,0.8); }
+  100% { box-shadow: 0 0 0 0 rgba(232,87,76,0), 0 30px 80px -30px rgba(0,0,0,0.8); }
+}
+.variant-tag.pulse { animation: tagPulse 900ms ease; }
+@keyframes tagPulse {
+  0% { transform: translateX(-50%) scale(1); }
+  40% { transform: translateX(-50%) scale(1.08); background: rgba(232,87,76,0.28); }
+  100% { transform: translateX(-50%) scale(1); }
+}
 .friend { margin-top: 12px !important; padding: 8px 10px; background: rgba(143,211,232,0.1); border-radius: 6px; }
 .recap-list { padding-left: 18px; display: grid; gap: 10px; }
 .recap-list li { display: grid; gap: 2px; font-size: 0.9rem; }
@@ -179,7 +197,11 @@ body[data-mode="analyst"] .claims dd { font-size: 1.35rem; }
 .diag-label { color: var(--def); font-weight: 600; }
 .errs { color: var(--def); font-size: 0.8rem; }
 .foot { margin-top: 20px; }
-.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #0b1a14; padding: 10px 16px; border-radius: 8px; font-weight: 600; max-width: min(92vw, 560px); z-index: 10; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: #0b1a14; padding: 12px 18px; border-radius: 8px; font-weight: 700; max-width: min(92vw, 560px); z-index: 20; box-shadow: 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(11,26,20,0.35); }
+.share-confirm { margin-top: 14px; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(245,197,66,0.55); background: rgba(245,197,66,0.12); }
+.share-confirm .kicker { color: var(--you); }
+.share-confirm p { margin: 0 0 8px; font-size: 0.92rem; }
+.share-confirm .btn { margin-top: 4px; }
 
 @media (max-width: 980px) {
   .game { grid-template-columns: 1fr; }
@@ -310,3 +332,32 @@ body[data-mode="casual"] #sb-explain .claims { grid-template-columns: 1fr; }
   .topnav { gap: 8px; width: 100%; justify-content: space-between; }
   .seg button { padding: 7px 11px; }
 }
+
+/* --- polish: mobile sandbox + loading --- */
+@media (max-width: 560px) {
+  .tools {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    gap: 0;
+    max-width: 100%;
+    padding: 3px;
+  }
+  .tools button { flex: 0 0 auto; white-space: nowrap; }
+  .hint { position: relative; z-index: 2; margin-bottom: 8px; }
+  .hint .btn { min-height: 44px; align-self: stretch; }
+  .sb-wrap { max-height: 42vh; width: 100%; }
+  .rank-head, .rank { grid-template-columns: 20px 1.4fr 1fr; font-size: 0.8rem; }
+  .rank .c, .rank .k, .rank-head .c, .rank-head .k { display: none; }
+  body[data-mode="analyst"] .rank-head,
+  body[data-mode="analyst"] .rank { grid-template-columns: 20px 1.3fr 0.95fr 0.85fr; }
+  body[data-mode="analyst"] .rank .c, body[data-mode="analyst"] .rank-head .c { display: block; }
+  body[data-mode="analyst"] .rank .k, body[data-mode="analyst"] .rank-head .k { display: none; }
+  .sb-side { padding-bottom: 24px; }
+  .share-confirm { font-size: 0.9rem; }
+  .condition .seg { width: 100%; }
+  .condition .seg button { flex: 1 1 auto; }
+}
+.pitch-status .btn { min-height: 44px; min-width: 7rem; border-color: var(--you); color: var(--you); }

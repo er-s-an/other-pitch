@@ -38,6 +38,8 @@ const state = {
   challenge: null as null | { scene: string; variant: string; pick: string | null },
   deltaFrom: null as Bundle | null,
   error: "" as string,
+  shareNote: null as string | null,
+  conditionWow: false,
 };
 
 const canvas = $<HTMLCanvasElement>("#pitch");
@@ -87,10 +89,14 @@ function pitchStatus(show: boolean, text: string, retry: boolean) {
 function render() {
   const b = state.bundle;
   if (!b || !state.frames.length) {
-    pitchStatus(true, state.phase === "error" ? "This play did not load." : "Loading the play…", state.phase === "error");
+    pitchStatus(true, state.phase === "error" ? "This play did not load. Use Retry below or on the pitch." : "Loading the play…", state.phase === "error");
     return;
   }
-  pitchStatus(false, "", false);
+  if (state.phase === "error") {
+    pitchStatus(true, state.error || "This play did not load. Use Retry.", true);
+  } else {
+    pitchStatus(false, "", false);
+  }
   const frame = framesAt(state.frames, state.t);
   const routes: Route[] = [];
   const highlights: Highlight[] = [];
@@ -172,8 +178,14 @@ function header() {
   $("#scoreline").textContent = `${b.clock} \u00b7 ${b.teams.home.short} ${b.score.home}\u2013${b.score.away} ${b.teams.away.short}`;
   $("#scene-title").textContent = b.title;
   $("#scene-brief").textContent = b.brief;
-  $("#variant-tag").textContent = b.variant_id === "base" ? "" : `Condition: ${b.intervention?.label}`;
-  $("#variant-tag").hidden = b.variant_id === "base";
+  const tag = $("#variant-tag");
+  tag.textContent = b.variant_id === "base" ? "" : `Condition: ${b.intervention?.label}`;
+  tag.hidden = b.variant_id === "base";
+  if (state.conditionWow && b.variant_id !== "base") {
+    tag.classList.remove("pulse");
+    void tag.offsetWidth;
+    tag.classList.add("pulse");
+  }
 }
 
 function metricRow(label: string, value: string, meaning: string) {
@@ -254,6 +266,7 @@ function conditionBox(): string {
   const label = ivs[0]?.label ?? b.intervention?.label ?? "";
   const on = b.variant_id !== "base";
   let delta = "";
+  let flipped = false;
   if (state.deltaFrom && state.view) {
     const prev = state.deltaFrom.branches.find((x) => x.action_id === state.view)!;
     const now = branch(state.view);
@@ -261,10 +274,14 @@ function conditionBox(): string {
     if (now.metrics.p_complete != null) parts.push(`Completion ${pct(prev.metrics.p_complete)} \u2192 ${pct(now.metrics.p_complete)}`);
     parts.push(`Opportunity ${score(prev.metrics.opportunity_value)} \u2192 ${score(now.metrics.opportunity_value)}`);
     const t0 = top(state.deltaFrom).action_id, t1 = top().action_id;
-    const rank = t0 === t1 ? `Strongest route unchanged: ${branch(t1).label}.` : `Strongest route changes: ${branch(t0, state.deltaFrom).label} \u2192 ${branch(t1).label}.`;
-    delta = `<p class="delta"><b>${esc(branch(state.view).label)}:</b> ${esc(parts.join(" \u00b7 "))}. ${esc(rank)}</p>`;
+    flipped = t0 !== t1;
+    const rank = flipped
+      ? `Strongest route changes: ${branch(t0, state.deltaFrom).label} \u2192 ${branch(t1).label}.`
+      : `Strongest route unchanged: ${branch(t1).label}.`;
+    delta = `<p class="delta${flipped ? " delta-flip" : ""}${state.conditionWow ? " delta-in" : ""}" aria-live="polite"><b>${esc(branch(state.view).label)}:</b> ${esc(parts.join(" \u00b7 "))}. <span class="rank-line">${esc(rank)}</span></p>`;
   }
-  return `<div class="condition"><p class="kicker">Change one condition</p>
+  return `<div class="condition${state.conditionWow ? " condition-wow" : ""}"><p class="kicker">Change one condition</p>
+    <p class="fine condition-lead">This is a different axis from comparing routes — same decision moment, one defender moves.</p>
     <div class="seg" role="group" aria-label="Defensive condition">
       <button type="button" data-variant="base" aria-pressed="${!on}">Base</button>
       <button type="button" data-variant="${esc(ivs[0]?.variant_id ?? b.variant_id)}" aria-pressed="${on}">${esc(label)}</button>
@@ -288,8 +305,12 @@ function renderPanel() {
   }
   header();
   if (state.phase === "intro") {
-    panel.append(el("div", "card intro", `<p class="kicker">${state.round === 0 && !state.challenge ? "Your call" : "Next play"}</p>
+    const challengeLead = state.challenge
+      ? `<p class="friend">A friend challenged you on this play. Make your call first — their pick stays hidden until you choose.${state.challenge.pick ? "" : ""}</p>`
+      : "";
+    panel.append(el("div", "card intro", `<p class="kicker">${state.challenge ? "Friend's challenge" : state.round === 0 ? "Your call" : "Next play"}</p>
       <h3>${esc(b.tactic)}</h3>
+      ${challengeLead}
       <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The panel ball is the one in black and white. A white ring is the carrier, a gold ring is a receiver, a red ring is the key defender.</p>
       <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
       <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
@@ -314,6 +335,9 @@ function renderPanel() {
     card.innerHTML = compareTabs() + `<div class="result-body" aria-live="polite">${resultCard()}</div>` + conditionBox();
     if (state.challenge?.pick) {
       card.append(el("p", "friend", `Your friend chose <b>${esc(branch(state.challenge.pick).label)}</b>. You chose <b>${esc(branch(state.pick!).label)}</b>.`));
+    }
+    if (state.shareNote) {
+      card.append(el("div", "share-confirm", `<p class="kicker">Challenge link ready</p><p>${esc(state.shareNote)}</p><button class="btn ghost" type="button" data-act="dismiss-share">Got it</button>`));
     }
     const row = el("div", "row");
     row.innerHTML = `<button class="btn ghost" type="button" data-act="replay">Replay</button>
@@ -345,7 +369,8 @@ function renderRecap(panel: HTMLElement) {
   c.append(ol);
   const lean = state.rounds.filter((r) => r.pick.startsWith("shoot")).length;
   c.append(el("p", "fine", `In these three plays you shot ${lean} time${lean === 1 ? "" : "s"}. Three plays only show this session's tendency, not your skill.`));
-  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Copy challenge link</button><button class="btn ghost" type="button" data-act="restart">Play again</button><button class="btn primary" type="button" data-app="sandbox">Open the Sandbox</button>`));
+  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Challenge a friend (play 1 + your pick)</button><button class="btn ghost" type="button" data-act="restart">Play again</button><button class="btn primary" type="button" data-app="sandbox">Open the Sandbox</button>`));
+  if (state.shareNote) c.append(el("div", "share-confirm", `<p class="kicker">Challenge link ready</p><p>${esc(state.shareNote)}</p><button class="btn ghost" type="button" data-act="dismiss-share">Got it</button>`));
   panel.append(c);
 }
 
@@ -405,7 +430,7 @@ async function beginRound() {
   const scene = state.challenge ? state.challenge.scene : ROUNDS[state.round];
   const b = await loadScene(scene, state.challenge?.variant ?? "base");
   if (!b) return;
-  state.pick = null; state.view = null; state.deltaFrom = null;
+  state.pick = null; state.view = null; state.deltaFrom = null; state.shareNote = null; state.conditionWow = false;
   state.frames = b.leadin.frames.concat([{ t: 0, ball: b.leadin.frames[b.leadin.frames.length - 1].ball, p: Object.fromEntries(b.players.map((p) => [p.id, [p.x, p.y] as XY])) }]);
   state.t = 0;
   setPhase("intro");
@@ -449,11 +474,21 @@ async function setVariant(v: string) {
     state.variant = v;
     state.view = view;
     state.error = "";
+    state.shareNote = null;
+    state.conditionWow = true;
     state.t = 0;
     state.frames = m.frames;
     const rec = state.rounds[state.round];
     if (rec && !rec.variantSeen.includes(v)) { rec.variantSeen.push(v); save(); }
+    const wrap = document.querySelector(".game .pitch-wrap");
+    if (wrap) {
+      wrap.classList.remove("condition-flash");
+      void (wrap as HTMLElement).offsetWidth;
+      wrap.classList.add("condition-flash");
+      window.setTimeout(() => wrap.classList.remove("condition-flash"), reduceMotion ? 0 : 900);
+    }
     setPhase("result");
+    window.setTimeout(() => { state.conditionWow = false; }, reduceMotion ? 0 : 1600);
     const end = m.frames[m.frames.length - 1].t;
     play(m.frames, 0, end, () => render());
   } catch (e) {
@@ -474,9 +509,18 @@ function shareURL(scene: string, pick: string | null) {
   return u.toString();
 }
 
-async function copy(text: string) {
-  try { await navigator.clipboard.writeText(text); toast("Challenge link copied. Your pick stays hidden until they choose."); }
-  catch { prompt("Copy this challenge link", text); }
+async function copy(text: string, note?: string) {
+  const detail = note ?? "Same play, base condition. Your pick stays hidden until they choose.";
+  try {
+    await navigator.clipboard.writeText(text);
+    state.shareNote = `Link copied. ${detail}`;
+    toast("Challenge link copied. Your pick stays hidden until they choose.");
+    renderPanel();
+  } catch {
+    state.shareNote = `Copy this link manually. ${detail}`;
+    prompt("Copy this challenge link", text);
+    renderPanel();
+  }
 }
 
 let toastTimer = 0;
@@ -537,8 +581,9 @@ document.addEventListener("click", (ev) => {
     case "start": startLeadin(); break;
     case "skip": state.token++; state.t = 0; setPhase("decide"); break;
     case "replay": if (state.view) void showView(state.view); break;
-    case "share": void copy(shareURL(state.bundle!.scene_id, state.pick)); break;
-    case "share-recap": void copy(shareURL(ROUNDS[0], state.rounds[0]?.pick ?? null)); break;
+    case "share": void copy(shareURL(state.bundle!.scene_id, state.pick), "They get this play. Your pick stays hidden until they choose."); break;
+    case "share-recap": void copy(shareURL(ROUNDS[0], state.rounds[0]?.pick ?? null), "Link opens play 1 with your pick hidden until they choose."); break;
+    case "dismiss-share": state.shareNote = null; renderPanel(); break;
     case "next":
       if (state.challenge) { state.challenge = null; history.replaceState(null, "", location.pathname); state.round = 0; state.rounds = []; void beginRound(); }
       else if (state.round + 1 < ROUNDS.length) { state.round++; save(); void beginRound(); }
@@ -606,9 +651,9 @@ async function boot() {
   if (ch) {
     const sc = state.catalog.scenes.find((s) => s.scene_id === ch && !s.heldout);
     const variant = q.get("variant") ?? "base";
-    if (!sc || !sc.variants.some((v) => v.variant_id === variant)) toast("That challenge is not available. Here is the current play.");
+    if (!sc || !sc.variants.some((v) => v.variant_id === variant)) toast("That challenge is not available. Starting the current play instead.");
     else {
-      if (q.get("v") && q.get("v") !== sc.scenario_version) toast("This challenge was made for an older version of the play. Your answer will not count as the same challenge.");
+      if (q.get("v") && q.get("v") !== sc.scenario_version) toast("This challenge used an older version of the play. You can still decide, but it is not the same challenge score.");
       let pickOk = false;
       try {
         pickOk = !!(q.get("pick") && (await getJSON<Bundle>(`${ch}/${variant}/bundle.json`)).branches.some((b) => b.action_id === q.get("pick")));
