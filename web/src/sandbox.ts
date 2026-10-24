@@ -208,6 +208,7 @@ function onDown(e: PointerEvent) {
   try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
   document.body.classList.add("sb-dragging");
   document.documentElement.classList.add("sb-dragging");
+  document.querySelector(".sandbox")?.classList.add("sb-dragging");
   document.querySelector("#sb-explain")?.setAttribute("aria-live", "off");
   sb.drag = { id, moved: false, start: [p.x, p.y], base: sb.ev };
 }
@@ -235,6 +236,7 @@ function onMove(e: PointerEvent) {
 function onUp() {
   document.body.classList.remove("sb-dragging");
   document.documentElement.classList.remove("sb-dragging");
+  document.querySelector(".sandbox")?.classList.remove("sb-dragging");
   document.querySelector("#sb-explain")?.setAttribute("aria-live", "polite");
   if (!sb.drag) return;
   const d = sb.drag; sb.drag = null;

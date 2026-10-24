@@ -35,11 +35,14 @@ const state = {
   t: 0,
   playing: false,
   token: 0,
-  challenge: null as null | { scene: string; variant: string; pick: string | null },
+  challenge: null as null | { scene: string; variant: string; pick: string | null; stale: boolean; title: string },
   deltaFrom: null as Bundle | null,
   error: "" as string,
-  shareNote: null as string | null,
+  shareNote: null as null | { kind: "play" | "recap"; text: string },
   conditionWow: false,
+  condFlashAt: 0,
+  condFlashKind: "base" as "base" | "lane",
+  gate: null as null | { title: string; body: string },
 };
 
 const canvas = $<HTMLCanvasElement>("#pitch");
@@ -75,28 +78,37 @@ function busy(on: boolean, msg = "Loading… the last picture stays up.") {
   n.hidden = !on;
   if (on) n.textContent = msg;
 }
-function pitchStatus(show: boolean, text: string, retry: boolean) {
+function pitchStatus(show: boolean, text: string, retry: boolean, current = false) {
   const box = document.querySelector<HTMLElement>("#pitch-status");
   const label = document.querySelector("#pitch-status-text");
   const btn = document.querySelector<HTMLElement>("#pitch-retry");
+  const currentBtn = document.querySelector<HTMLElement>("#pitch-current");
   if (!box || !label || !btn) return;
   box.hidden = !show;
   if (show && text) label.textContent = text;
   btn.hidden = !retry;
+  if (currentBtn) currentBtn.hidden = !current;
+}
+function condLive(msg: string) {
+  const n = document.querySelector("#cond-live");
+  if (n) n.textContent = msg;
 }
 
 // ---------------- rendering ----------------
 function render() {
   const b = state.bundle;
-  if (!b || !state.frames.length) {
-    pitchStatus(true, state.phase === "error" ? "This play did not load. Use Retry below or on the pitch." : "Loading the play…", state.phase === "error");
+  if (state.gate) {
+    pitchStatus(true, state.gate.title, false, true);
+    if (!b || !state.frames.length) return;
+  } else if (!b || !state.frames.length) {
+    pitchStatus(true, state.phase === "error" ? (state.error || "This play did not load. Use Retry below or on the pitch.") : "Loading the play…", state.phase === "error");
     return;
-  }
-  if (state.phase === "error") {
+  } else if (state.phase === "error") {
     pitchStatus(true, state.error || "This play did not load. Use Retry.", true);
   } else {
     pitchStatus(false, "", false);
   }
+  if (!b || !state.frames.length) return;
   const frame = framesAt(state.frames, state.t);
   const routes: Route[] = [];
   const highlights: Highlight[] = [];
@@ -140,24 +152,35 @@ function render() {
     state.phase === "intro" || state.phase === "decide" ? "Decision moment \u00b7 t = 0.0 s" :
     `Decision + ${rel.toFixed(1)} s`;
   const offsideX = state.phase === "intro" || state.phase === "decide" ? offsideXOf(b.players) : null;
-  draw(canvas, { frame, players: b.players, carrierId: b.carrier_id, routes, highlights, targets, targetIds, laneBand, zones, caption, offsideX });
+  let wash: { strength: number; color: string } | null = null;
+  if (!reduceMotion && state.condFlashAt) {
+    const strength = Math.max(0, 1 - (performance.now() - state.condFlashAt) / 720);
+    if (strength > 0.02) wash = { strength, color: state.condFlashKind === "base" ? YOU : "#e8574c" };
+  }
+  draw(canvas, { frame, players: b.players, carrierId: b.carrier_id, routes, highlights, targets, targetIds, laneBand, zones, caption, offsideX, wash });
   $("#t-rel").textContent = caption;
 }
 
 let raf = 0;
-function play(frames: Frame[], from: number, to: number, done: () => void) {
+function play(frames: Frame[], from: number, to: number, done: () => void, token = state.token) {
   cancelAnimationFrame(raf);
+  if (token !== state.token) return;
   state.frames = frames;
-  if (reduceMotion) { state.t = to; render(); done(); return; }
-  const start = performance.now(), dur = (to - from) * 1000;
-  const token = state.token;
+  if (reduceMotion) {
+    state.t = to;
+    render();
+    if (token === state.token) done();
+    return;
+  }
+  const start = performance.now(), dur = Math.max(1, (to - from) * 1000);
   state.playing = true;
   const step = (now: number) => {
-    if (token !== state.token) return;
+    if (token !== state.token) { state.playing = false; return; }
     const u = Math.min(1, (now - start) / dur);
     state.t = from + (to - from) * u;
     render();
-    if (u < 1) raf = requestAnimationFrame(step); else { state.playing = false; done(); }
+    if (u < 1) raf = requestAnimationFrame(step);
+    else { state.playing = false; if (token === state.token) done(); }
   };
   raf = requestAnimationFrame(step);
 }
@@ -179,12 +202,18 @@ function header() {
   $("#scene-title").textContent = b.title;
   $("#scene-brief").textContent = b.brief;
   const tag = $("#variant-tag");
-  tag.textContent = b.variant_id === "base" ? "" : `Condition: ${b.intervention?.label}`;
-  tag.hidden = b.variant_id === "base";
-  if (state.conditionWow && b.variant_id !== "base") {
+  const lane = b.variant_id !== "base";
+  if (state.conditionWow) {
+    tag.hidden = false;
+    tag.textContent = lane ? `Condition: ${b.intervention?.label ?? "Changed"}` : "Condition: Base";
+    tag.classList.toggle("tag-base", !lane);
     tag.classList.remove("pulse");
     void tag.offsetWidth;
     tag.classList.add("pulse");
+  } else {
+    tag.textContent = lane ? `Condition: ${b.intervention?.label ?? ""}` : "";
+    tag.hidden = !lane;
+    tag.classList.remove("pulse", "tag-base");
   }
 }
 
@@ -258,6 +287,16 @@ function compareTabs(): string {
     `<button role="tab" type="button" data-view="${id}" aria-selected="${id === state.view}" class="tab ${id === state.pick ? "tab-you" : ""}"><span>${esc(roleOf(id))}${id === b.recorded_action_id && id === state.pick ? " \u00b7 Recorded" : ""}</span>${esc(branch(id).label)}</button>`).join("") + `</div>`;
 }
 
+function shiftChip(label: string, prev: number | null, now: number | null, asScore: boolean): string {
+  if (prev == null || now == null) return "";
+  const a = Math.round(prev * 100), b = Math.round(now * 100), d = b - a;
+  const fmt = (n: number) => asScore ? `${n} / 100` : `${n}%`;
+  const arrow = d === 0
+    ? `<span class="arr flat">=</span>`
+    : `<span class="arr ${d > 0 ? "up" : "down"}">${d > 0 ? "\u25B2" : "\u25BC"} ${Math.abs(d)}</span>`;
+  return `<span class="shift"><span class="shift-k">${esc(label)}</span> ${fmt(a)} \u2192 ${fmt(b)} ${arrow}</span>`;
+}
+
 function conditionBox(): string {
   const b = state.bundle!;
   const opts = b.available_interventions;
@@ -266,36 +305,72 @@ function conditionBox(): string {
   const label = ivs[0]?.label ?? b.intervention?.label ?? "";
   const on = b.variant_id !== "base";
   let delta = "";
-  let flipped = false;
   if (state.deltaFrom && state.view) {
-    const prev = state.deltaFrom.branches.find((x) => x.action_id === state.view)!;
-    const now = branch(state.view);
-    const parts = [];
-    if (now.metrics.p_complete != null) parts.push(`Completion ${pct(prev.metrics.p_complete)} \u2192 ${pct(now.metrics.p_complete)}`);
-    parts.push(`Opportunity ${score(prev.metrics.opportunity_value)} \u2192 ${score(now.metrics.opportunity_value)}`);
-    const t0 = top(state.deltaFrom).action_id, t1 = top().action_id;
-    flipped = t0 !== t1;
-    const rank = flipped
-      ? `Strongest route changes: ${branch(t0, state.deltaFrom).label} \u2192 ${branch(t1).label}.`
-      : `Strongest route unchanged: ${branch(t1).label}.`;
-    delta = `<p class="delta${flipped ? " delta-flip" : ""}${state.conditionWow ? " delta-in" : ""}" aria-live="polite"><b>${esc(branch(state.view).label)}:</b> ${esc(parts.join(" \u00b7 "))}. <span class="rank-line">${esc(rank)}</span></p>`;
+    const prev = state.deltaFrom.branches.find((x) => x.action_id === state.view);
+    const now = b.branches.find((x) => x.action_id === state.view);
+    if (prev && now) {
+      const chips = [
+        now.metrics.p_complete != null ? shiftChip("Completion", prev.metrics.p_complete, now.metrics.p_complete, false) : "",
+        shiftChip("Opportunity", prev.metrics.opportunity_value, now.metrics.opportunity_value, true),
+      ].filter(Boolean).join("");
+      const t0 = top(state.deltaFrom).action_id, t1 = top().action_id;
+      const flipped = t0 !== t1;
+      const rank = flipped
+        ? `Strongest route changes: ${branch(t0, state.deltaFrom).label} \u2192 ${branch(t1).label}`
+        : `Strongest route unchanged: ${branch(t1).label}`;
+      delta = `<div class="delta${flipped ? " delta-flip" : ""}${state.conditionWow ? " delta-in" : ""}" role="status">
+        <p class="delta-metrics"><b>${esc(now.label)}</b> ${chips}</p>
+        <p class="rank-line${flipped ? " rank-flip" : ""}">${esc(rank)}</p>
+      </div>`;
+    }
   }
-  return `<div class="condition${state.conditionWow ? " condition-wow" : ""}"><p class="kicker">Change one condition</p>
-    <p class="fine condition-lead">This is a different axis from comparing routes — same decision moment, one defender moves.</p>
-    <div class="seg" role="group" aria-label="Defensive condition">
+  return `<div class="condition${state.conditionWow ? " condition-wow" : ""}${on ? " condition-lane" : " condition-base"}"><p class="kicker">Change one condition</p>
+    <p class="fine condition-lead">Not another action. One defender moves. The routes above stay the same decision.</p>
+    <div class="seg" role="group" aria-label="Defensive condition, separate from comparing actions">
       <button type="button" data-variant="base" aria-pressed="${!on}">Base</button>
       <button type="button" data-variant="${esc(ivs[0]?.variant_id ?? b.variant_id)}" aria-pressed="${on}">${esc(label)}</button>
     </div>${delta}
     <p class="fine">Same moment, same rules. Only one defender's position changes. ${esc(b.generation.cache_status === "cached_validated_result" ? "Precomputed by the same engine and validated; loaded from cache." : "")}</p></div>`;
 }
 
+function shareConfirm(kind: "play" | "recap"): string {
+  if (!state.shareNote || state.shareNote.kind !== kind) return "";
+  return `<div class="share-confirm" role="status"><p class="kicker">Link copied</p><p>${esc(state.shareNote.text)}</p><button class="btn ghost" type="button" data-act="dismiss-share">Got it</button></div>`;
+}
+
+function challengeIntro(b: Bundle): string {
+  const ch = state.challenge!;
+  const cond = ch.variant === "base" ? "Base" : (b.intervention?.label ?? ch.variant);
+  const pick = ch.pick ? "Hidden until you choose" : "Not included";
+  const stale = ch.stale ? `<p class="version-note">This link was made for an older version of the play. Your answer will not count as the same challenge.</p>` : "";
+  return `<div class="card intro challenge-card"><p class="kicker">Friend's challenge</p>
+    <h3>${esc(b.title)}</h3>
+    <dl class="challenge-facts">
+      <div><dt>Who</dt><dd>A friend</dd></div>
+      <div><dt>What</dt><dd>${esc(b.title)} \u00b7 ${esc(cond)}</dd></div>
+      <div><dt>Their pick</dt><dd>${esc(pick)}</dd></div>
+    </dl>
+    <p>${ch.pick ? "Same play. You decide first. Their pick appears beside yours only after you choose." : "No pick was attached. Make your own call on this play."}</p>
+    ${stale}
+    <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The panel ball is the one in black and white. A white ring is the carrier, a gold ring is a receiver, a red ring is the key defender.</p>
+    <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
+      <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
+      <button class="btn ghost" type="button" data-act="edit">Edit this play</button></div></div>`;
+}
+
 function renderPanel() {
   const panel = $("#panel");
   const b = state.bundle;
   panel.innerHTML = "";
+  if (state.gate) {
+    $("#scene-title").textContent = "Challenge unavailable";
+    $("#scene-brief").textContent = "The link did not open a play. The previous screen stays up.";
+    panel.append(el("div", "card", `<h3>${esc(state.gate.title)}</h3><p>${esc(state.gate.body)}</p><div class="row"><button class="btn primary" type="button" data-act="current">Play the current play</button></div>`));
+    return;
+  }
   if (state.phase === "error") {
     $("#scene-title").textContent = b?.title ?? "Could not load";
-    $("#scene-brief").textContent = b ? b.brief : "The catalogue or the play bundle did not load. Retry, or go back to the first play.";
+    $("#scene-brief").textContent = b ? b.brief : "The list of plays or this bundle did not load. Retry, or go back to the first play.";
     panel.append(el("div", "card", `<h3>Could not load this play.</h3><p>${esc(state.error || "The request failed. The previous picture stays up when one was already on screen.")}</p><div class="row"><button class="btn primary" type="button" data-act="retry">Retry</button><button class="btn ghost" type="button" data-act="restart">Back to the first play</button></div>`));
     return;
   }
@@ -305,12 +380,9 @@ function renderPanel() {
   }
   header();
   if (state.phase === "intro") {
-    const challengeLead = state.challenge
-      ? `<p class="friend">A friend challenged you on this play. Make your call first — their pick stays hidden until you choose.${state.challenge.pick ? "" : ""}</p>`
-      : "";
-    panel.append(el("div", "card intro", `<p class="kicker">${state.challenge ? "Friend's challenge" : state.round === 0 ? "Your call" : "Next play"}</p>
+    if (state.challenge) panel.insertAdjacentHTML("beforeend", challengeIntro(b));
+    else panel.append(el("div", "card intro", `<p class="kicker">${state.round === 0 ? "Your call" : "Next play"}</p>
       <h3>${esc(b.tactic)}</h3>
-      ${challengeLead}
       <p>Watch three seconds of the attack, then decide what ${esc(surname(b.carrier_id))} should do. The panel ball is the one in black and white. A white ring is the carrier, a gold ring is a receiver, a red ring is the key defender.</p>
       <div class="row"><button class="btn primary" type="button" data-act="start">Start the play</button>
       <button class="btn ghost" type="button" data-act="skip">Skip to the decision</button>
@@ -326,7 +398,8 @@ function renderPanel() {
       list.append(btn);
     }
     c.append(list);
-    if (state.challenge?.pick) c.append(el("p", "fine", "Your friend already chose. You will see their pick after yours."));
+    if (state.challenge?.pick) c.append(el("p", "fine", "Their pick stays hidden until you choose. You will see it beside yours after you decide."));
+    if (state.challenge?.stale) c.append(el("p", "version-note", "This link was made for an older version of the play. Your answer will not count as the same challenge."));
     panel.append(c);
   } else if (state.phase === "branch") {
     panel.append(el("div", "card", `<p class="kicker">${esc(roleOf(state.view!))} \u00b7 one simulated possibility</p><h3>${esc(branch(state.view!).label)}</h3><p>Playing the branch your choice creates.</p>`));
@@ -334,10 +407,8 @@ function renderPanel() {
     const card = el("div", "card result");
     card.innerHTML = compareTabs() + `<div class="result-body" aria-live="polite">${resultCard()}</div>` + conditionBox();
     if (state.challenge?.pick) {
-      card.append(el("p", "friend", `Your friend chose <b>${esc(branch(state.challenge.pick).label)}</b>. You chose <b>${esc(branch(state.pick!).label)}</b>.`));
-    }
-    if (state.shareNote) {
-      card.append(el("div", "share-confirm", `<p class="kicker">Challenge link ready</p><p>${esc(state.shareNote)}</p><button class="btn ghost" type="button" data-act="dismiss-share">Got it</button>`));
+      const friendBranch = b.branches.find((x) => x.action_id === state.challenge!.pick);
+      if (friendBranch) card.append(el("p", "friend", `Your friend chose <b>${esc(friendBranch.label)}</b>. You chose <b>${esc(branch(state.pick!).label)}</b>.`));
     }
     const row = el("div", "row");
     row.innerHTML = `<button class="btn ghost" type="button" data-act="replay">Replay</button>
@@ -345,6 +416,7 @@ function renderPanel() {
       <button class="btn ghost" type="button" data-act="edit">Edit this play</button>
       <button class="btn primary" type="button" data-act="next">${state.challenge ? "Play the full challenge" : state.round + 1 < ROUNDS.length ? "Next play" : "See your recap"}</button>`;
     card.append(row);
+    card.insertAdjacentHTML("beforeend", shareConfirm("play"));
     panel.append(card);
   } else if (state.phase === "recap") {
     renderRecap(panel);
@@ -369,8 +441,9 @@ function renderRecap(panel: HTMLElement) {
   c.append(ol);
   const lean = state.rounds.filter((r) => r.pick.startsWith("shoot")).length;
   c.append(el("p", "fine", `In these three plays you shot ${lean} time${lean === 1 ? "" : "s"}. Three plays only show this session's tendency, not your skill.`));
-  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Challenge a friend (play 1 + your pick)</button><button class="btn ghost" type="button" data-act="restart">Play again</button><button class="btn primary" type="button" data-app="sandbox">Open the Sandbox</button>`));
-  if (state.shareNote) c.append(el("div", "share-confirm", `<p class="kicker">Challenge link ready</p><p>${esc(state.shareNote)}</p><button class="btn ghost" type="button" data-act="dismiss-share">Got it</button>`));
+  c.append(el("p", "fine share-label", "This link contains play 1 and your pick from that play. Your friend sees the same opening play. Your pick stays hidden until they choose."));
+  c.append(el("div", "row", `<button class="btn ghost" type="button" data-act="share-recap">Copy challenge link</button><button class="btn ghost" type="button" data-act="restart">Play again</button><button class="btn primary" type="button" data-app="sandbox">Open the Sandbox</button>`));
+  c.insertAdjacentHTML("beforeend", shareConfirm("recap"));
   panel.append(c);
 }
 
@@ -415,7 +488,11 @@ async function showView(id: string) {
   state.view = id;
   setPhase(state.phase === "result" ? "result" : "branch");
   const end = m.frames[m.frames.length - 1].t;
-  play(m.frames, 0, end, () => { if (state.phase === "branch") afterBranch(); else render(); });
+  play(m.frames, 0, end, () => {
+    if (token !== state.token) return;
+    if (state.phase === "branch") afterBranch();
+    else render();
+  }, token);
 }
 
 function afterBranch() {
@@ -430,7 +507,8 @@ async function beginRound() {
   const scene = state.challenge ? state.challenge.scene : ROUNDS[state.round];
   const b = await loadScene(scene, state.challenge?.variant ?? "base");
   if (!b) return;
-  state.pick = null; state.view = null; state.deltaFrom = null; state.shareNote = null; state.conditionWow = false;
+  state.gate = null;
+  state.pick = null; state.view = null; state.deltaFrom = null; state.shareNote = null; state.conditionWow = false; state.condFlashAt = 0;
   state.frames = b.leadin.frames.concat([{ t: 0, ball: b.leadin.frames[b.leadin.frames.length - 1].ball, p: Object.fromEntries(b.players.map((p) => [p.id, [p.x, p.y] as XY])) }]);
   state.t = 0;
   setPhase("intro");
@@ -440,8 +518,9 @@ async function beginRound() {
 function startLeadin() {
   const b = state.bundle;
   if (!b) return;
+  const token = state.token;
   setPhase("leadin");
-  play(state.frames, b.leadin.frames[0].t, 0, () => setPhase("decide"));
+  play(state.frames, b.leadin.frames[0].t, 0, () => { if (token === state.token) setPhase("decide"); }, token);
 }
 
 function choose(id: string) {
@@ -455,12 +534,31 @@ function choose(id: string) {
   void showView(id);
 }
 
+function clearConditionWow() {
+  state.conditionWow = false;
+  document.querySelector(".condition")?.classList.remove("condition-wow");
+  const tag = document.querySelector<HTMLElement>("#variant-tag");
+  if (!tag) return;
+  if (state.bundle?.variant_id === "base") {
+    tag.hidden = true;
+    tag.textContent = "";
+    tag.classList.remove("pulse", "tag-base");
+  }
+}
+
 async function setVariant(v: string) {
   if (!state.bundle || v === state.bundle.variant_id || !state.view) return;
   const prev = state.bundle;
+  const prevFrames = state.frames;
+  const prevT = state.t;
   const view = state.view;
   const token = ++state.token;
+  cancelAnimationFrame(raf);
   busy(true, "Loading this condition… the last picture stays up.");
+  condLive("Loading this condition. The last picture stays up.");
+  document.querySelector(".condition")?.setAttribute("aria-busy", "true");
+  const wrap = document.querySelector<HTMLElement>(".game .pitch-wrap");
+  wrap?.classList.add("is-pending");
   try {
     const b = await getJSON<Bundle>(`${prev.scene_id}/${v}/bundle.json`);
     if (token !== state.token) return;
@@ -469,6 +567,7 @@ async function setVariant(v: string) {
     const m = await getJSON<Motion>(`${prev.scene_id}/${v}/${br.frames_ref}`);
     if (token !== state.token) return;
     busy(false);
+    wrap?.classList.remove("is-pending");
     state.deltaFrom = prev;
     state.bundle = b;
     state.variant = v;
@@ -476,57 +575,86 @@ async function setVariant(v: string) {
     state.error = "";
     state.shareNote = null;
     state.conditionWow = true;
-    state.t = 0;
+    state.condFlashAt = performance.now();
+    state.condFlashKind = v === "base" ? "base" : "lane";
     state.frames = m.frames;
+    state.t = 0;
     const rec = state.rounds[state.round];
     if (rec && !rec.variantSeen.includes(v)) { rec.variantSeen.push(v); save(); }
-    const wrap = document.querySelector(".game .pitch-wrap");
     if (wrap) {
-      wrap.classList.remove("condition-flash");
-      void (wrap as HTMLElement).offsetWidth;
-      wrap.classList.add("condition-flash");
-      window.setTimeout(() => wrap.classList.remove("condition-flash"), reduceMotion ? 0 : 900);
+      wrap.classList.remove("condition-flash", "flash-base", "flash-lane");
+      void wrap.offsetWidth;
+      wrap.classList.add("condition-flash", v === "base" ? "flash-base" : "flash-lane");
+      window.setTimeout(() => wrap.classList.remove("condition-flash", "flash-base", "flash-lane"), reduceMotion ? 0 : 900);
     }
     setPhase("result");
-    window.setTimeout(() => { state.conditionWow = false; }, reduceMotion ? 0 : 1600);
+    const rankNow = top().action_id;
+    const rankPrev = top(prev).action_id;
+    const rankMsg = rankNow === rankPrev
+      ? `Condition applied. Strongest route unchanged: ${branch(rankNow).label}.`
+      : `Condition applied. Strongest route changes: ${branch(rankPrev, prev).label} to ${branch(rankNow).label}.`;
+    condLive(rankMsg);
+    window.setTimeout(() => { if (token === state.token) clearConditionWow(); }, reduceMotion ? 0 : 1700);
     const end = m.frames[m.frames.length - 1].t;
-    play(m.frames, 0, end, () => render());
+    play(m.frames, 0, end, () => { if (token === state.token) render(); }, token);
   } catch (e) {
     if (token !== state.token) return;
     busy(false);
+    wrap?.classList.remove("is-pending");
     state.bundle = prev;
-    toast(`This condition did not load (${(e as Error).message}). The previous picture stays up.`);
+    state.frames = prevFrames;
+    state.t = prevT;
+    state.view = view;
+    render();
+    const msg = `This condition did not load (${(e as Error).message}). The previous picture stays up.`;
+    condLive(msg);
+    toast(msg, { tone: "warn", ms: 6500 });
+  } finally {
+    if (token === state.token) document.querySelector(".condition")?.setAttribute("aria-busy", "false");
   }
 }
 
+function sceneVersion(scene: string): string {
+  return state.catalog?.scenes.find((s) => s.scene_id === scene)?.scenario_version
+    ?? state.bundle?.scenario_version
+    ?? "1.0";
+}
+
 function shareURL(scene: string, pick: string | null) {
-  const b = state.bundle!;
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("challenge", scene);
-  u.searchParams.set("v", b.scenario_version);
+  u.searchParams.set("v", sceneVersion(scene));
   u.searchParams.set("variant", "base");
   if (pick) u.searchParams.set("pick", pick);
   return u.toString();
 }
 
-async function copy(text: string, note?: string) {
-  const detail = note ?? "Same play, base condition. Your pick stays hidden until they choose.";
+function versionSentence(scene: string): string {
+  return `The link records version ${sceneVersion(scene)}. If the play is updated, they will see a version note, and it will not count as the same challenge.`;
+}
+
+async function copy(text: string, kind: "play" | "recap", note: string) {
+  const detail = `${note} ${versionSentence(kind === "recap" ? ROUNDS[0] : (state.bundle?.scene_id ?? ROUNDS[0]))}`;
   try {
     await navigator.clipboard.writeText(text);
-    state.shareNote = `Link copied. ${detail}`;
-    toast("Challenge link copied. Your pick stays hidden until they choose.");
-    renderPanel();
+    state.shareNote = { kind, text: detail };
+    toast("Challenge link copied.");
   } catch {
-    state.shareNote = `Copy this link manually. ${detail}`;
+    state.shareNote = { kind, text: `Copy the link from the prompt. ${detail}` };
     prompt("Copy this challenge link", text);
-    renderPanel();
   }
+  renderPanel();
 }
 
 let toastTimer = 0;
-function toast(msg: string) {
-  const t = $("#toast"); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = window.setTimeout(() => (t.hidden = true), 4200);
+function toast(msg: string, opts?: { ms?: number; tone?: "plain" | "warn" }) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.hidden = false;
+  t.classList.toggle("warn", opts?.tone === "warn");
+  clearTimeout(toastTimer);
+  const ms = opts?.ms ?? (msg.length > 90 ? 7000 : 4200);
+  toastTimer = window.setTimeout(() => { t.hidden = true; t.classList.remove("warn"); }, ms);
 }
 
 // ---------------- under the hood ----------------
@@ -581,15 +709,30 @@ document.addEventListener("click", (ev) => {
     case "start": startLeadin(); break;
     case "skip": state.token++; state.t = 0; setPhase("decide"); break;
     case "replay": if (state.view) void showView(state.view); break;
-    case "share": void copy(shareURL(state.bundle!.scene_id, state.pick), "They get this play. Your pick stays hidden until they choose."); break;
-    case "share-recap": void copy(shareURL(ROUNDS[0], state.rounds[0]?.pick ?? null), "Link opens play 1 with your pick hidden until they choose."); break;
+    case "share": {
+      const title = state.bundle?.title ?? "this play";
+      const pickLabel = state.pick && state.bundle?.branches.some((x) => x.action_id === state.pick) ? branch(state.pick).label : "your pick";
+      void copy(shareURL(state.bundle!.scene_id, state.pick), "play", `Your friend opens the same play (${title}). Your pick (${pickLabel}) stays hidden until they choose.`);
+      break;
+    }
+    case "share-recap": {
+      const pickLabel = (state.rounds[0]?.pick ?? "your pick").replace(/_/g, " ");
+      void copy(shareURL(ROUNDS[0], state.rounds[0]?.pick ?? null), "recap", `This link contains play 1 and your pick (${pickLabel}). Your friend sees that play. Your pick stays hidden until they choose.`);
+      break;
+    }
     case "dismiss-share": state.shareNote = null; renderPanel(); break;
+    case "current": void playCurrent(); break;
     case "next":
       if (state.challenge) { state.challenge = null; history.replaceState(null, "", location.pathname); state.round = 0; state.rounds = []; void beginRound(); }
       else if (state.round + 1 < ROUNDS.length) { state.round++; save(); void beginRound(); }
       else { state.round = ROUNDS.length; save(); setPhase("recap"); }
       break;
-    case "restart": localStorage.removeItem(STORE); state.round = 0; state.rounds = []; void beginRound(); break;
+    case "restart":
+      localStorage.removeItem(STORE);
+      state.round = 0; state.rounds = []; state.challenge = null; state.gate = null; state.shareNote = null;
+      history.replaceState(null, "", location.pathname);
+      void beginRound();
+      break;
     case "retry": void retryLoad(); break;
     case "diag": void runDiagnostic(); break;
     case "edit":
@@ -629,43 +772,105 @@ async function retryLoad() {
       state.catalog = await getJSON<Catalog>("scenes.json");
       $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;
     } catch (e) {
-      state.error = `Scene catalogue did not load (${(e as Error).message}).`;
+      state.error = `The list of plays did not load (${(e as Error).message}). Retry, or use Back to the first play.`;
       setPhase("error");
+      pitchStatus(true, "The list of plays did not load.", true);
       return;
     }
   }
+  state.gate = null;
   await beginRound();
+}
+
+function restoreSaved() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE) ?? "null");
+    if (saved && Array.isArray(saved.rounds)) {
+      state.rounds = saved.rounds;
+      state.round = Math.min(saved.round, ROUNDS.length);
+      state.mode = saved.mode ?? "casual";
+    }
+  } catch { /* ignore */ }
+}
+
+async function playCurrent() {
+  state.gate = null;
+  state.challenge = null;
+  state.shareNote = null;
+  history.replaceState(null, "", location.pathname);
+  restoreSaved();
+  applyMode();
+  if (state.round >= ROUNDS.length) {
+    state.round = ROUNDS.length - 1;
+    await beginRound();
+    state.round = ROUNDS.length;
+    setPhase("recap");
+    return;
+  }
+  await beginRound();
+}
+
+function showGate(title: string, body: string) {
+  state.gate = { title, body };
+  state.challenge = null;
+  state.phase = "intro";
+  document.body.dataset.phase = "intro";
+  const cta = document.querySelector<HTMLElement>("#stage-cta");
+  if (cta) cta.hidden = true;
+  pitchStatus(true, title, false, true);
+  renderPanel();
 }
 
 async function boot() {
   applyMode();
   initSandbox();
   const sbq = new URLSearchParams(location.search).get("sb");
-  if (sbq) { if (decodeState(sbq)) { setApp("sandbox"); showSandbox(); sbRecompute(); } else toast("That sandbox link could not be read. Here is the first play."); }
+  const sandboxLive = !!(sbq && decodeState(sbq));
+  if (sbq) {
+    if (sandboxLive) { setApp("sandbox"); showSandbox(); sbRecompute(); }
+    else toast("That sandbox link could not be read. The first play is below.", { tone: "warn", ms: 7000 });
+  }
   if (new URLSearchParams(location.search).get("random")) { randomize(Number(new URLSearchParams(location.search).get("random")) || undefined); setApp("sandbox"); }
   try { state.catalog = await getJSON<Catalog>("scenes.json"); }
-  catch (e) { state.error = `Scene catalogue did not load (${(e as Error).message}).`; setPhase("error"); return; }
+  catch (e) {
+    state.error = `The list of plays did not load (${(e as Error).message}). Retry, or use Back to the first play.`;
+    setPhase("error");
+    return;
+  }
+  if (!state.catalog.scenes.some((s) => !s.heldout)) {
+    state.error = "The list of plays is empty. Retry, or come back for the first play.";
+    setPhase("error");
+    return;
+  }
   $("#engine").textContent = `${state.catalog.engine_version} \u00b7 generated ${state.catalog.generated_at.slice(0, 10)}`;
   const q = new URLSearchParams(location.search);
   const ch = q.get("challenge");
   if (ch) {
     const sc = state.catalog.scenes.find((s) => s.scene_id === ch && !s.heldout);
     const variant = q.get("variant") ?? "base";
-    if (!sc || !sc.variants.some((v) => v.variant_id === variant)) toast("That challenge is not available. Starting the current play instead.");
-    else {
-      if (q.get("v") && q.get("v") !== sc.scenario_version) toast("This challenge used an older version of the play. You can still decide, but it is not the same challenge score.");
-      let pickOk = false;
+    if (!sc || !sc.variants.some((v) => v.variant_id === variant)) {
+      toast("That challenge is not available. The previous screen stays up.", { tone: "warn", ms: 7000 });
+      if (!sandboxLive) {
+        showGate("That challenge is not available", "This link does not match a current play. Nothing else was loaded. Play the current play when you are ready.");
+        void loadHeldout();
+        return;
+      }
+    } else {
+      const stale = !!(q.get("v") && q.get("v") !== sc.scenario_version);
+      if (stale) toast("This challenge was made for an older version of the play. Your answer will not count as the same challenge.", { tone: "warn", ms: 8000 });
       try {
-        pickOk = !!(q.get("pick") && (await getJSON<Bundle>(`${ch}/${variant}/bundle.json`)).branches.some((b) => b.action_id === q.get("pick")));
-        state.challenge = { scene: ch, variant, pick: pickOk ? q.get("pick") : null };
-      } catch (e) { toast(`That challenge did not load (${(e as Error).message}). Here is the current play.`); }
+        const pickOk = !!(q.get("pick") && (await getJSON<Bundle>(`${ch}/${variant}/bundle.json`)).branches.some((b) => b.action_id === q.get("pick")));
+        state.challenge = { scene: ch, variant, pick: pickOk ? q.get("pick") : null, stale, title: sc.title };
+      } catch (e) {
+        toast(`That challenge did not load (${(e as Error).message}). The previous screen stays up.`, { tone: "warn", ms: 7000 });
+        if (!sandboxLive) {
+          showGate("That challenge did not load", `The play bundle failed (${(e as Error).message}). The previous screen stays up. Play the current play when you are ready.`);
+          void loadHeldout();
+          return;
+        }
+      }
     }
-  } else {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORE) ?? "null");
-      if (saved && Array.isArray(saved.rounds)) { state.rounds = saved.rounds; state.round = Math.min(saved.round, ROUNDS.length); state.mode = saved.mode ?? "casual"; }
-    } catch { /* ignore */ }
-  }
+  } else restoreSaved();
   applyMode();
   void loadHeldout();
   if (state.round >= ROUNDS.length && !state.challenge) { state.round = ROUNDS.length - 1; await beginRound(); state.round = ROUNDS.length; setPhase("recap"); return; }

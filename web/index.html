@@ -38,6 +38,7 @@
           <div class="pitch-status" id="pitch-status" role="status">
             <p id="pitch-status-text">Loading the first play…</p>
             <button class="btn" type="button" data-act="retry" id="pitch-retry" hidden>Retry</button>
+            <button class="btn primary" type="button" data-act="current" id="pitch-current" hidden>Play the current play</button>
           </div>
           <p class="badge">Synthetic scenario</p>
           <p class="variant-tag" id="variant-tag" hidden></p>
@@ -54,6 +55,7 @@
       </section>
       <aside class="side">
         <p class="busy" id="busy" role="status" hidden>Loading… the last picture stays up.</p>
+        <p id="cond-live" class="sr" aria-live="polite"></p>
         <p class="scene-kicker" id="scene-title">Loading the play</p>
         <p class="scene-brief" id="scene-brief">Fetching the validated bundle. This is not a live agent run.</p>
         <div id="panel" aria-live="polite"><div class="card"><h3>Loading the play</h3><p>Fetching the validated bundle. This page does not pretend an agent is running. If this stays empty, use Retry.</p></div></div>

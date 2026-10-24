@@ -89,6 +89,8 @@ export interface DrawInput {
   arrows?: Array<{ at: XY; v: XY }>; selected?: string | null; offsideX?: number | null;
   /** Player ids who can receive the current pass. Gold dashed ring plus shirt number. */
   targetIds?: string[];
+  /** Brief condition-change wash. 0–1 strength. Separate from route colours. */
+  wash?: { strength: number; color: string } | null;
 }
 
 type RingKind = "carrier" | "target" | "key" | "select";
@@ -349,6 +351,18 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) paintTag(ctx, l, occupied, end, r.label, r.color, end[1] < 18); }
   for (const t of d.targets ?? []) if (t.label) paintTag(ctx, l, occupied, t.at, t.label, YOU, t.below ?? t.at[1] < 18);
   if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 7], "Offside line", YOU, true);
+  if (d.wash && d.wash.strength > 0.02) {
+    const a = Math.min(0.26, d.wash.strength * 0.26);
+    ctx.save();
+    ctx.fillStyle = d.wash.color;
+    ctx.globalAlpha = a;
+    ctx.fillRect(l.ox, l.oy, L * l.s, W * l.s);
+    ctx.globalAlpha = Math.min(0.95, 0.35 + d.wash.strength * 0.6);
+    ctx.strokeStyle = d.wash.color;
+    ctx.lineWidth = Math.max(3, l.s * 0.42);
+    ctx.strokeRect(l.ox + 1.5, l.oy + 1.5, L * l.s - 3, W * l.s - 3);
+    ctx.restore();
+  }
 }
 
 export function hitTarget(canvas: HTMLCanvasElement, targets: Array<{ id: string; at: XY }>, ex: number, ey: number): string | null {
