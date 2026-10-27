@@ -320,20 +320,23 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   }
   drawBall(ctx, bx, by, br);
   const occupied: Box[] = [];
-  const discR = Math.max(8, l.s * 1.08) + 16;
+  const discR = Math.max(8, l.s * 1.08) + 18;
+  const keyR = discR + 10; // Key tags must clear the red ring, not sit on the disc.
   for (const info of d.players) {
     const at = d.frame.p[info.id];
     if (!at) continue;
     const [x, y] = px(l, at[0], at[1]);
-    occupied.push({ x: x - discR, y: y - discR, w: discR * 2, h: discR * 2 });
+    const r = keySet.has(info.id) ? keyR : discR;
+    occupied.push({ x: x - r, y: y - r, w: r * 2, h: r * 2 });
   }
   occupied.push({ x: bx - br - 12, y: by - br - 12, w: (br + 12) * 2, h: (br + 12) * 2 });
-  // Keep tags off the top cue, the corner badge, and the bottom edge.
+  // Keep tags off the top cue, live-pip / variant strip, corner badge, and Attacking label.
   const [, topY] = px(l, 0, 0);
-  occupied.push({ x: 0, y: Math.max(0, topY - 4), w: l.w, h: l.s * 5.2 });
+  occupied.push({ x: 0, y: Math.max(0, topY - 4), w: l.w, h: l.s * 5.6 });
+  occupied.push({ x: l.w - 200, y: 0, w: 200, h: 44 }); // live-pip / top-right
   occupied.push({ x: l.w - 168, y: l.h - 40, w: 168, h: 40 });
   const [atkX, atkY] = px(l, VIEW_X0 + 1.5, W - 3.4);
-  occupied.push({ x: atkX - 4, y: atkY - 12, w: 120, h: 24 });
+  occupied.push({ x: atkX - 4, y: atkY - 14, w: 130, h: 28 });
   if (d.caption) {
     ctx.font = `600 ${Math.max(11, l.s * 1.35)}px "Public Sans", sans-serif`;
     const capW = Math.min(l.w * 0.55, ctx.measureText(d.caption).width + 8);
@@ -346,11 +349,12 @@ export function draw(canvas: HTMLCanvasElement, d: DrawInput) {
   }
   for (const h of d.highlights) {
     const at = d.frame.p[h.id];
-    if (at && h.label) paintTag(ctx, l, occupied, at, h.label, "#E8574C", at[1] < 18);
+    // Prefer below for Key so the red ring stays readable; near the top half always go below.
+    if (at && h.label) paintTag(ctx, l, occupied, at, h.label, "#E8574C", at[1] < 28 || h.label === "Key");
   }
   for (const r of d.routes) { const end = r.points[r.points.length - 1]; if (end && r.label) paintTag(ctx, l, occupied, end, r.label, r.color, end[1] < 18); }
   for (const t of d.targets ?? []) if (t.label) paintTag(ctx, l, occupied, t.at, t.label, YOU, t.below ?? t.at[1] < 18);
-  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 7], "Offside line", YOU, true);
+  if (d.offsideX != null) paintTag(ctx, l, occupied, [d.offsideX, 14], "Offside line", YOU, true);
   if (d.wash && d.wash.strength > 0.02) {
     const a = Math.min(0.26, d.wash.strength * 0.26);
     ctx.save();

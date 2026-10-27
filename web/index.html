@@ -70,14 +70,16 @@
             <h1 class="ask">Change anything.</h1>
             <p class="task">Drag a player. Rankings recompute on every move.</p>
           </div>
-          <label class="sb-load"><span>Start from</span>
-            <select id="sb-scene">
+          <label class="sb-load" id="sb-load"><span>Tutorial preset</span>
+            <select id="sb-scene" aria-describedby="sb-preset-note">
               <option value="central-lane:base">Play 1 · You missed the middle</option>
               <option value="central-lane:lane_closed">Play 1 · lane closed</option>
               <option value="open-not-safe:base">Play 2 · Open is not safe</option>
               <option value="close-call:base">Play 3 · A good choice can still fail</option>
               <option value="heldout-01:base">Held-out input</option>
-            </select></label>
+              <option value="__edited" hidden disabled>Live setup · left tutorial</option>
+            </select>
+            <span class="fine" id="sb-preset-note">Presets are starters only. Edits leave the preset and recompute live.</span></label>
         </div>
         <div class="seg tools" role="group" aria-label="Edit tool">
           <button type="button" data-tool="move" aria-pressed="true" title="Drag a player. Rankings recompute on every move.">Drag</button>
@@ -88,7 +90,7 @@
         </div>
         <p class="tool-hint" id="sb-tool-hint">Drag a player. Rankings recompute on every move.</p>
         <div class="hint" id="sb-hint">
-          <p><b>First edit.</b> Drag anyone on the pitch — rankings update live in your browser. On a phone, drag with one finger; the page will not scroll while you hold a player.</p>
+          <p><b>First edit.</b> Presets are starters. Drag anyone — every candidate action recomputes in your browser. On a phone, drag with one finger; the page will not scroll while you hold a player.</p>
           <button class="btn ghost" type="button" data-sbact="dismiss-hint">Got it</button>
         </div>
         <div class="pitch-wrap sb-wrap"><canvas id="sb-pitch" aria-label="Editable pitch. Drag players; every candidate action is recomputed." role="img"></canvas><p class="badge">Synthetic · live model</p><p class="live-pip" id="sb-live" aria-live="polite"></p></div>
@@ -102,10 +104,13 @@
           <button class="btn ghost" type="button" data-sbact="random">Randomize legal setup</button>
           <button class="btn ghost" type="button" data-sbact="share">Copy link to this setup</button>
         </div>
+        <p class="fine sb-preset-aside">Randomize also leaves the tutorial preset.</p>
         <div class="card"><p class="kicker">Ranking by opportunity quality</p>
-          <div class="rank-head"><span></span><span>Action</span><span>Opportunity</span><span class="c">Completion</span><span class="k">Risk</span></div>
-          <div id="sb-rank"></div>
-          <p class="fine">Deltas compare with the state before your last change.</p>
+          <div class="rank-scroll">
+            <div class="rank-head"><span></span><span>Action</span><span>Opportunity</span><span class="c">Completion</span><span class="k">Risk</span></div>
+            <div id="sb-rank"></div>
+          </div>
+          <p class="fine">Deltas compare with the state before your last change. Analyst columns scroll sideways on narrow screens.</p>
         </div>
         <div class="card" id="sb-explain" aria-live="polite"></div>
         <details class="card params"><summary>Model parameters</summary><div id="sb-params"></div>

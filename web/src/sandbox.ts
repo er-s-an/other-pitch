@@ -20,9 +20,11 @@ const SLIDERS: Array<{ key: keyof Params; label: string; min: number; max: numbe
 
 const sb = {
   snap: null as Snapshot | null, params: { ...DEFAULT_PARAMS } as Params, overrides: [] as SAction[], source: "",
+  baseSource: "", presetKey: "", edited: false,
   ev: null as Evaluation | null, prev: null as Evaluation | null, selected: null as string | null,
   tool: "move" as Tool, drag: null as null | { id: string; moved: boolean; start: XY; base: Evaluation | null },
   timings: [] as number[], full: [] as number[], anim: null as null | { frames: Frame[]; start: number }, raf: 0, dirty: false, uid: 0,
+  lastHash: "",
 };
 
 const canvas = () => $<HTMLCanvasElement>("#sb-pitch");
@@ -34,7 +36,9 @@ export function loadScene(id: string, variant = "base") {
   const sc = SCENES[id];
   let snap = cloneSnap(sc);
   if (variant !== "base") { const iv = sc.interventions.find((i) => i.variant_id === variant); if (iv) snap = cloneSnap(applyIntervention(snap, iv.subject_id, iv.after)); }
-  sb.snap = snap; sb.overrides = sc.actions.map((a) => ({ ...a })); sb.source = `${sc.title}${variant !== "base" ? " (lane closed)" : ""}`;
+  sb.snap = snap; sb.overrides = sc.actions.map((a) => ({ ...a }));
+  const title = `${sc.title}${variant !== "base" ? " (lane closed)" : ""}`;
+  clearEdited(`${id}:${variant}`, title);
   sb.prev = null; sb.selected = null; recompute(true);
 }
 
@@ -55,21 +59,68 @@ export function randomize(seed = Date.now() >>> 0) {
   const na = 3 + Math.floor(R() * 2);
   for (let i = 0; i < na; i++) { const [x, y] = place(68, Math.max(70, line - 0.5), 5, 63); ps.push({ id: an[i][0], team: "home", number: an[i][1], name: an[i][2], role: an[i][3], x, y, vx: u(0.5, 4.5), vy: u(-1.5, 1.5) }); }
   sb.snap = { scenario_id: `random-${seed.toString(36)}`, carrier_id: "h8", players: ps, actions: [], key_defender_ids: [] };
-  sb.overrides = []; sb.source = `Random legal setup #${seed.toString(36)}`; sb.selected = null;
-  commit(); recompute(true);
+  sb.overrides = []; sb.source = `Random legal setup #${seed.toString(36)} · left tutorial preset`; sb.selected = null;
+  sb.baseSource = sb.source; commit(); markEdited("random"); recompute(true);
 }
 
 function commit() { sb.prev = sb.ev; }
+
+function syncPresetSelect() {
+  const sel = document.querySelector<HTMLSelectElement>("#sb-scene");
+  const load = document.querySelector<HTMLElement>("#sb-load");
+  if (!sel) return;
+  const editedOpt = sel.querySelector<HTMLOptionElement>('option[value="__edited"]');
+  if (sb.edited) {
+    if (editedOpt) editedOpt.hidden = false;
+    sel.value = "__edited";
+    load?.classList.add("is-edited");
+  } else {
+    if (editedOpt) editedOpt.hidden = true;
+    if (sb.presetKey && [...sel.options].some((o) => o.value === sb.presetKey)) sel.value = sb.presetKey;
+    load?.classList.remove("is-edited");
+  }
+}
+
+function markEdited(reason = "edit") {
+  if (reason === "random") {
+    sb.edited = true;
+    sb.presetKey = "";
+    syncPresetSelect();
+    return;
+  }
+  if (!sb.edited) {
+    sb.edited = true;
+    const base = (sb.baseSource || sb.source || "Tutorial preset").replace(/ · edited live$/, "");
+    sb.source = `${base} · edited live`;
+  }
+  syncPresetSelect();
+}
+
+function clearEdited(presetKey: string, title: string) {
+  sb.edited = false;
+  sb.presetKey = presetKey;
+  sb.baseSource = title;
+  sb.source = title;
+  syncPresetSelect();
+}
 
 let liveT = 0;
 function markLive() {
   const wrap = document.querySelector<HTMLElement>(".sb-wrap");
   const pip = document.querySelector<HTMLElement>("#sb-live");
+  const perf = document.querySelector<HTMLElement>("#sb-perf");
   clearTimeout(liveT);
   const dragging = !!sb.drag;
+  const hashBit = sb.ev?.state_hash ? sb.ev.state_hash.slice(0, 8) : "";
   if (pip) {
-    pip.textContent = dragging ? "Updating…" : "Rankings updated";
+    pip.textContent = dragging ? "Updating…" : (hashBit ? `Rankings updated · ${hashBit}` : "Rankings updated");
     pip.classList.add("on");
+  }
+  if (perf && !dragging && sb.ev && sb.ev.state_hash !== sb.lastHash) {
+    perf.classList.remove("hash-flash");
+    void perf.offsetWidth;
+    perf.classList.add("hash-flash");
+    sb.lastHash = sb.ev.state_hash;
   }
   if (!wrap) return;
   if (dragging) {
@@ -86,7 +137,8 @@ function markLive() {
   liveT = window.setTimeout(() => {
     wrap.classList.remove("is-live", "is-holding");
     pip?.classList.remove("on");
-  }, 680);
+    perf?.classList.remove("hash-flash");
+  }, 780);
 }
 
 function recompute(resetSel = false) {
@@ -184,7 +236,7 @@ function onDown(e: PointerEvent) {
   const inside = x >= VIEW_X0 && x <= 105 && y >= 0 && y <= 68;
   if (sb.tool === "add-def" || sb.tool === "add-att") {
     if (!inside) return;
-    dismissHint();
+    dismissHint(); markEdited("edit");
     const team = sb.tool === "add-def" ? "away" : "home";
     const used = new Set(sb.snap.players.filter((p) => p.team === team).map((p) => p.number));
     let n = 2; while (used.has(n)) n++;
@@ -197,12 +249,12 @@ function onDown(e: PointerEvent) {
   const p = sb.snap.players.find((q) => q.id === id)!;
   if (sb.tool === "remove") {
     if (id === sb.snap.carrier_id) { flash("The ball carrier cannot be removed. Give the ball to someone else first."); return; }
-    dismissHint();
+    dismissHint(); markEdited("edit");
     commit(); sb.snap.players = sb.snap.players.filter((q) => q.id !== id); recompute(); return;
   }
   if (sb.tool === "ball") {
     if (p.team !== "home" || p.role === "GK") { flash("Only an attacking outfield player can have the ball."); return; }
-    dismissHint();
+    dismissHint(); markEdited("edit");
     commit(); sb.snap.carrier_id = id; recompute(true); return;
   }
   try { canvas().setPointerCapture(e.pointerId); } catch { /* synthetic or already released pointer */ }
@@ -220,7 +272,7 @@ function onMove(e: PointerEvent) {
   const [x, y] = toPitch(canvas(), e.clientX - r.left, e.clientY - r.top);
   const p = sb.snap.players.find((q) => q.id === sb.drag!.id)!;
   p.x = clamp(x, VIEW_X0 + 0.5, 104.5); p.y = clamp(y, 0.5, 67.5);
-  if (Math.hypot(p.x - sb.drag.start[0], p.y - sb.drag.start[1]) >= 0.4) dismissHint();
+  if (Math.hypot(p.x - sb.drag.start[0], p.y - sb.drag.start[1]) >= 0.4) { dismissHint(); markEdited("edit"); }
   sb.drag.moved = true;
   if (!sb.dirty) {
     sb.dirty = true;
@@ -267,7 +319,9 @@ function renderPanel() {
     return;
   }
   const analyst = document.body.dataset.mode === "analyst";
-  $("#sb-perf").innerHTML = `<span class="live-note">${ev.actions.length} actions recomputed.</span> <span class="tech"><b>${ev.ms.toFixed(2)} ms</b> \u00b7 p95 ${p95().toFixed(2)} ms over ${sb.timings.length} updates \u00b7 state <code>${esc(ev.state_hash)}</code></span>`;
+  $("#sb-perf").innerHTML = analyst
+    ? `<span class="live-note">${ev.actions.length} actions recomputed from this exact shape.</span> <span class="tech"><b>${ev.ms.toFixed(2)} ms</b> · p95 ${p95().toFixed(2)} ms over ${sb.timings.length} updates · state <code>${esc(ev.state_hash)}</code></span>`
+    : `<span class="live-note">${ev.actions.length} actions recomputed from this exact shape.</span>`;
   const list = $("#sb-rank");
   if (ev.legality.length || !ev.ranking.length) {
     const why = ev.legality.length ? `Not a legal state: ${ev.legality.join("; ")}` : "No legal action from this shape. Move a team-mate onside, or give the ball to an attacker.";
@@ -281,31 +335,39 @@ function renderPanel() {
     const pb = prev?.branches[id];
     const sameCarrier = prev && prev.actions.find((x) => x.action_id === id)?.actor_id === a.actor_id;
     const before = sameCarrier ? pb : undefined;
+    const ck = analyst ? `<span class="c">${b.metrics.p_complete == null ? "—" : display("p_complete", b.metrics.p_complete)}${b.metrics.p_complete != null ? deltaChip(b.metrics.p_complete, prev ? (before ? before.metrics.p_complete : undefined) : null, "pct") : ""}</span>
+      <span class="k">${display("p_lose_possession", b.metrics.p_lose_possession)}</span>` : "";
     return `<button type="button" class="rank ${id === sb.selected ? "on" : ""} ${i === 0 ? "best" : ""}" data-sel="${id}">
       <span class="n">${i + 1}</span><span class="lbl">${esc(a.label)}<small>${a.type === "shot" ? "Shot" : "Ground pass"}</small></span>
       <span class="v">${display("opportunity_value", b.metrics.opportunity_value)}${deltaChip(b.metrics.opportunity_value, prev ? (before ? before.metrics.opportunity_value : undefined) : null, "score")}</span>
-      <span class="c">${b.metrics.p_complete == null ? "\u2014" : display("p_complete", b.metrics.p_complete)}${b.metrics.p_complete != null ? deltaChip(b.metrics.p_complete, prev ? (before ? before.metrics.p_complete : undefined) : null, "pct") : ""}</span>
-      <span class="k">${display("p_lose_possession", b.metrics.p_lose_possession)}</span></button>`;
+      ${ck}</button>`;
   }).join("") + (ev.unavailable.length ? `<p class="fine">Unavailable: ${esc(ev.unavailable.map((u) => u.reason).join("; "))}.</p>` : "");
   if (prev && prev.ranking[0] && ev.ranking[0] && prev.ranking[0] !== ev.ranking[0] && prev.actions[0]?.actor_id === ev.actions[0]?.actor_id) {
     const a0 = prev.actions.find((x) => x.action_id === prev.ranking[0])?.label, a1 = ev.actions.find((x) => x.action_id === ev.ranking[0])?.label;
-    list.insertAdjacentHTML("afterbegin", `<p class="flip">Strongest route changed: ${esc(a0 ?? "")} \u2192 ${esc(a1 ?? "")}</p>`);
+    list.insertAdjacentHTML("afterbegin", `<p class="flip pulse">Strongest route changed: ${esc(a0 ?? "")} → ${esc(a1 ?? "")}</p>`);
   }
   if (sb.selected) {
     const ex = explain(s, ev, sb.selected);
     const b = ev.branches[sb.selected];
     const ok = ex.qa.length === 0;
     const claims = ex.claims.filter((c) => c.action_id === sb.selected && (analyst || c.metric === "opportunity_value"));
-    const details = `<details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
+    if (!ok) {
+      $("#sb-explain").innerHTML = `<p class="warn">Explanation withheld: QA failed (${esc(ex.qa.join("; "))}).</p>`;
+    } else if (analyst) {
+      const details = `<details class="defs"><summary>Outcome tree &amp; evidence</summary><ul class="tree">${b.leaves.map((l) => `<li><span>${esc(l.leaf_id.replace(/_/g, " "))}</span><span>p ${l.probability.toFixed(3)}</span><span>${l.shot_quality == null ? "no shot" : "q " + l.shot_quality.toFixed(3)}</span><span>${l.elapsed_s.toFixed(1)} s</span></li>`).join("")}</ul>
       <p class="fine">${ex.claims.map((c) => `<code>${esc(c.evidence_id)}</code>`).join(" ")}</p></details>
       <p class="qa-ok">QA: ${ex.claims.length} claims, each bound to a value computed for this exact state.</p>`;
-    const fine = `<p class="fine">One simulated reading of this state. Analyst shows the outcome tree and the timings.</p>`;
-    $("#sb-explain").innerHTML = ok
-      ? `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
+      $("#sb-explain").innerHTML = `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
       <dl class="claims">${claims.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
-      ${analyst ? details : fine}
-      <button class="btn ghost" type="button" data-sbact="play">Play this branch</button>`
-      : `<p class="warn">Explanation withheld: QA failed (${esc(ex.qa.join("; "))}).</p>`;
+      ${details}
+      <button class="btn ghost" type="button" data-sbact="play">Play this branch</button>`;
+    } else {
+      // Casual: sentence-first — no outcome-tree / QA markup in the DOM.
+      $("#sb-explain").innerHTML = `<h3>${esc(ex.headline)}</h3><p>${esc(ex.sentence)}</p>
+      <dl class="claims">${claims.map((c) => `<div><dt>${esc(c.label)}</dt><dd>${esc(c.display_value)}</dd></div>`).join("")}</dl>
+      <p class="fine">One simulated reading of this state. Switch to Analyst for the outcome tree and timings.</p>
+      <button class="btn ghost" type="button" data-sbact="play">Play this branch</button>`;
+    }
   }
 }
 
@@ -334,7 +396,9 @@ export function decodeState(str: string): boolean {
     sb.params = { ...DEFAULT_PARAMS };
     for (const k of Object.keys(d.P ?? {})) if (k in DEFAULT_PARAMS) (sb.params as unknown as Record<string, number>)[k] = Number(d.P[k]);
     sb.overrides = Array.isArray(d.o) ? d.o.filter((a: SAction) => a && (a.type === "pass" || a.type === "shot")) : [];
-    sb.source = `Shared setup${d.src ? " \u00b7 from " + String(d.src).slice(0, 60) : ""}`;
+    sb.source = `Shared setup${d.src ? " · from " + String(d.src).slice(0, 60) : ""} · edited live`;
+    sb.baseSource = sb.source; sb.edited = true; sb.presetKey = "";
+    syncPresetSelect();
     return true;
   } catch { return false; }
 }
@@ -393,6 +457,7 @@ export function initSandbox() {
   new ResizeObserver(() => render()).observe(cv);
   syncTool();
   syncSliders();
+  syncPresetSelect();
   $("#sb-params").addEventListener("pointerdown", () => commit());
   $("#sb-params").addEventListener("keydown", () => commit());
   $("#sb-params").addEventListener("input", (e) => {
@@ -400,6 +465,7 @@ export function initSandbox() {
     sb.params[k] = Number(t.value);
     const s = SLIDERS.find((x) => x.key === k)!;
     $(`[data-out="${k}"]`).textContent = `${sb.params[k]}${s.unit ? " " + s.unit : ""}`;
+    markEdited("edit");
     recompute();
   });
   document.addEventListener("click", (e) => {
