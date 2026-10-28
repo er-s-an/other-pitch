@@ -1,0 +1,9 @@
+{
+  "name": "other-pitch",
+  "private": true,
+  "description": "Root package so Vercel picks Node/static build instead of Python (requirements.txt is for local agents/MCP only).",
+  "scripts": {
+    "build": "npm run build --prefix web",
+    "test": "npm test --prefix web"
+  }
+}
